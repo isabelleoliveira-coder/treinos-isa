@@ -154,3 +154,12 @@ input[type="text"], input[type="number"], input[type="date"], textarea {
 }
 
 a { color: inherit; }
+
+.intensity-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.schedule-toggle {
+  width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--border); background: none;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--muted);
+}
+.schedule-toggle.done { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.schedule-row { display: flex; align-items: center; gap: 12px; }
+.schedule-row.done .schedule-label { text-decoration: line-through; opacity: 0.55; }

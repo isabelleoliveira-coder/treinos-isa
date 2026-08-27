@@ -1,6 +1,7 @@
 import { PROTOCOL_INFO, TIPS, MOTIVATIONAL_MESSAGES } from '../data/workouts.js';
 import { AVATAR_URL } from '../data/avatar.js';
-import { loadWorkouts, saveWorkouts, loadSessions, saveSessions, loadTheme, saveTheme } from './storage.js';
+import { DAY_ORDER, DAY_LABELS, DAY_LABELS_SHORT, getSessionsForDate, getTodayDayKey } from '../data/schedule.js';
+import { loadWorkouts, saveWorkouts, loadSessions, saveSessions, loadTheme, saveTheme, loadScheduleLog, saveScheduleLog } from './storage.js';
 import { icon } from './icons.js';
 import { extractYouTubeId, todayISO, formatDatePT, formatDateShort, daysAgo, bestSetLoad, todaysMotivation, escapeHtml, uid } from './utils.js';
 import { renderActiveSession, bindActiveSessionEvents } from './screens/session.js';
@@ -9,7 +10,9 @@ export const state = {
   workouts: loadWorkouts(),
   sessions: loadSessions(),
   theme: loadTheme(),
+  scheduleLog: loadScheduleLog(),
   tab: 'hoje',
+  homeView: 'hoje',
   browseWorkoutId: null,
   activeSession: null,
   logModalOpen: false,
@@ -72,6 +75,28 @@ function suggestedWorkoutId() {
   if (!last) return state.workouts[0].id;
   const idx = state.workouts.findIndex((w) => w.id === last.workoutId);
   return state.workouts[(idx + 1) % state.workouts.length].id;
+}
+
+// ---------------- Programação semanal (Cross/HYROX/corrida — camada leve) ----------------
+export function isScheduleDone(dateISO, sessionId) {
+  return !!state.scheduleLog[`${dateISO}:${sessionId}`];
+}
+export function toggleScheduleSession(dateISO, sessionId) {
+  const key = `${dateISO}:${sessionId}`;
+  state.scheduleLog = { ...state.scheduleLog, [key]: !state.scheduleLog[key] };
+  saveScheduleLog(state.scheduleLog);
+}
+function mondayOfWeek(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // volta pra segunda-feira
+  date.setDate(date.getDate() + diff);
+  return date;
+}
+function isoOffset(dateObj, offsetDays) {
+  const d = new Date(dateObj);
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
 }
 
 export function startSession(workoutId) {
@@ -180,8 +205,6 @@ export function render() {
 
 // ---------------- HOJE ----------------
 function renderHoje() {
-  if (!state.homePickedId) state.homePickedId = suggestedWorkoutId();
-  const workout = state.workouts.find((w) => w.id === state.homePickedId);
   const weekCount = state.sessions.filter((s) => s.date >= daysAgo(6) && s.status === 'completed').length;
   const totalCount = state.sessions.filter((s) => s.status === 'completed').length;
   const motivation = todaysMotivation(MOTIVATIONAL_MESSAGES);
@@ -211,32 +234,25 @@ function renderHoje() {
       <div style="font-size:11px;letter-spacing:1.5px;color:var(--accent);font-weight:700;text-transform:uppercase">Olá, ${escapeHtml(PROTOCOL_INFO.aluna)}</div>
       <h1 class="font-head" style="font-size:26px;margin:4px 0 0">Pronta pra treinar?</h1>
     </div>
+
+    <div style="padding:14px 20px 0">
+      <div class="segmented">
+        <button class="${state.homeView === 'hoje' ? 'active' : ''}" data-action="set-home-view" data-view="hoje">Hoje</button>
+        <button class="${state.homeView === 'semana' ? 'active' : ''}" data-action="set-home-view" data-view="semana">Minha Semana</button>
+      </div>
+    </div>
+
+    ${state.homeView === 'hoje' ? renderHojeSchedule() : renderWeekView()}
+
     <div style="padding:14px 20px 4px">
       <div class="card card-raised" style="border-left:3px solid var(--accent);padding:18px 20px">
         <p class="font-quote" style="font-size:16.5px;line-height:1.35;color:var(--accent);margin:0;letter-spacing:0.1px">${escapeHtml(motivation)}</p>
       </div>
     </div>
-    <div style="padding:0 20px">
-      <div class="card card-raised" style="text-align:center;padding:26px 20px">
-        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">Sugestão de hoje</div>
-        <div style="width:68px;height:68px;border-radius:50%;background:var(--bg);border:3px solid var(--accent);display:flex;align-items:center;justify-content:center;margin:14px auto 10px" class="font-head">
-          <span style="font-size:28px;color:var(--accent)">${workout.id}</span>
-        </div>
-        <div style="font-weight:700;font-size:17px">${escapeHtml(workout.focus)}</div>
-        ${workout.subfocus ? `<div style="color:var(--muted);font-size:12.5px;margin-top:3px">${escapeHtml(workout.subfocus)}</div>` : ''}
-        <div style="color:var(--muted);font-size:12px;margin-top:4px">${workout.exercises.length} exercícios</div>
-        <button class="btn-primary" style="margin-top:18px" data-action="start-session" data-workout="${workout.id}">${icon('flame')} Iniciar treino</button>
-        <div style="display:flex;gap:8px;justify-content:center;margin-top:14px">
-          ${state.workouts.map((w) => `
-            <button data-action="pick-home-workout" data-workout="${w.id}" style="width:34px;height:34px;border-radius:50%;border:1.5px solid ${w.id === state.homePickedId ? 'var(--accent)' : 'var(--border)'};background:${w.id === state.homePickedId ? 'var(--accent-soft)' : 'transparent'};color:${w.id === state.homePickedId ? 'var(--accent)' : 'var(--muted)'};font-weight:700;font-size:13px">${w.id}</button>
-          `).join('')}
-        </div>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;padding:16px 20px 0">
+    <div style="display:flex;gap:10px;padding:14px 20px 0">
       <div class="card" style="flex:1;text-align:center;padding:14px 8px">
         <div class="font-head" style="font-size:22px;color:var(--accent)">${weekCount}</div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:2px">Essa semana</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px">Musculação essa semana</div>
       </div>
       <div class="card" style="flex:1;text-align:center;padding:14px 8px">
         <div class="font-head" style="font-size:22px;color:var(--accent)">${totalCount}</div>
@@ -248,6 +264,89 @@ function renderHoje() {
         ${icon('trendingUp', 18)}
         <div style="font-size:13px"><b>${escapeHtml(lastImprovement.name || '')}</b>: +${lastImprovement.delta}kg desde o último registro</div>
       </div>` : ''}
+    <div style="height:8px"></div>
+  `;
+}
+
+const INTENSITY_COLOR = { alta: 'var(--danger)', moderada: '#E8B84B', leve: 'var(--accent-dim)' };
+
+function renderScheduleSessionCard(dateISO, session) {
+  const done = isScheduleDone(dateISO, session.id);
+  return `
+    <div class="card ${done ? 'schedule-row done' : 'schedule-row'}" style="margin-bottom:10px">
+      <button class="schedule-toggle ${done ? 'done' : ''}" data-action="toggle-schedule" data-date="${dateISO}" data-session="${session.id}">
+        ${done ? icon('check', 15) : ''}
+      </button>
+      <div style="flex:1;min-width:0">
+        <div class="schedule-label" style="font-weight:700;font-size:14.5px;display:flex;align-items:center;gap:6px">
+          <span>${session.emoji}</span> ${escapeHtml(session.label)}
+          ${session.intensity ? `<span class="intensity-dot" style="background:${INTENSITY_COLOR[session.intensity]}"></span>` : ''}
+        </div>
+        ${session.subtitle ? `<div style="color:var(--muted);font-size:12px;margin-top:2px">${escapeHtml(session.subtitle)}</div>` : ''}
+      </div>
+      ${session.workoutLink ? `
+        <button class="btn-pill" data-action="open-schedule-workout" style="padding:6px 12px;font-size:12px;flex-shrink:0">Abrir treino</button>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderHojeSchedule() {
+  const dayKey = getTodayDayKey();
+  const date = todayISO();
+  const sessions = getSessionsForDate(date);
+  const doneCount = sessions.filter((s) => isScheduleDone(date, s.id)).length;
+  return `
+    <div style="padding:18px 20px 0">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px">
+        <h2 class="font-head" style="font-size:19px;margin:0;text-transform:uppercase">Hoje · ${DAY_LABELS[dayKey]}</h2>
+        <span style="color:var(--muted);font-size:12px">${doneCount}/${sessions.length} feitos</span>
+      </div>
+      <div style="margin-top:12px">
+        ${sessions.length
+          ? sessions.map((s) => renderScheduleSessionCard(date, s)).join('')
+          : `<div style="color:var(--muted);font-size:13px;padding:12px 0">Nenhuma sessão programada pra hoje.</div>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderWeekView() {
+  const monday = mondayOfWeek(new Date());
+  const rangeStart = formatDateShort(isoOffset(monday, 0));
+  const rangeEnd = formatDateShort(isoOffset(monday, 6));
+  let totalSessions = 0, totalDone = 0;
+  DAY_ORDER.forEach((day, i) => {
+    const dateISO = isoOffset(monday, i);
+    const sessions = getSessionsForDate(dateISO);
+    totalSessions += sessions.length;
+    totalDone += sessions.filter((s) => isScheduleDone(dateISO, s.id)).length;
+  });
+
+  return `
+    <div style="padding:18px 20px 0">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:2px">
+        <h2 class="font-head" style="font-size:19px;margin:0">Semana ${rangeStart}–${rangeEnd}</h2>
+        <span style="color:var(--muted);font-size:12px">${totalDone}/${totalSessions} treinos concluídos</span>
+      </div>
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:16px">
+        ${DAY_ORDER.map((day, i) => {
+          const dateISO = isoOffset(monday, i);
+          const sessions = getSessionsForDate(dateISO);
+          const isToday = dateISO === todayISO();
+          return `
+            <div>
+              <div style="font-size:11px;font-weight:700;color:${isToday ? 'var(--accent)' : 'var(--muted)'};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">
+                ${DAY_LABELS_SHORT[day]} ${isToday ? '· hoje' : ''}
+              </div>
+              ${sessions.length
+                ? sessions.map((s) => renderScheduleSessionCard(dateISO, s)).join('')
+                : `<div style="color:var(--faint);font-size:12.5px;padding:2px 0 4px">Sem sessão programada</div>`}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
   `;
 }
 
@@ -560,6 +659,12 @@ function handleAction(action, ds) {
       state.homePickedId = ds.workout; render(); break;
     case 'start-session':
       startSession(ds.workout); break;
+    case 'set-home-view':
+      state.homeView = ds.view; render(); break;
+    case 'toggle-schedule':
+      toggleScheduleSession(ds.date, ds.session); render(); break;
+    case 'open-schedule-workout':
+      state.browseWorkoutId = suggestedWorkoutId(); state.browseState = { editingId: null, videoOpenId: null }; render(); break;
     case 'set-historico-subtab':
       state.historicoSubTab = ds.sub; render(); break;
     case 'set-historico-filter':

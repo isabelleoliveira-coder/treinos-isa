@@ -4,6 +4,7 @@ const KEYS = {
   workouts: 'treinosIsa.workouts',
   sessions: 'treinosIsa.sessions',
   theme: 'treinosIsa.theme',
+  scheduleLog: 'treinosIsa.scheduleLog',
 };
 
 function safeGet(key, fallback) {
@@ -55,4 +56,10 @@ export function loadTheme() {
 }
 export function saveTheme(theme) {
   return safeSet(KEYS.theme, theme);
+}
+export function loadScheduleLog() {
+  return safeGet(KEYS.scheduleLog, {});
+}
+export function saveScheduleLog(log) {
+  return safeSet(KEYS.scheduleLog, log);
 }
