@@ -64,10 +64,15 @@ export const WEEK_OVERRIDES = {
   ],
 };
 
-// Ponto único de leitura: dá prioridade à exceção da data específica;
-// se não houver, cai no padrão recorrente do dia da semana.
+export const RECURRING_START_DATE = '2026-08-31';
+
+// Ponto único de leitura: dá prioridade à exceção da data específica; se não
+// houver e a data for anterior ao início da programação recorrente, não há
+// sessão programada (semana de transição só tem as exceções explícitas);
+// senão, cai no padrão recorrente do dia da semana.
 export function getSessionsForDate(dateISO) {
   if (WEEK_OVERRIDES[dateISO]) return WEEK_OVERRIDES[dateISO];
+  if (dateISO < RECURRING_START_DATE) return [];
   const [y, m, d] = dateISO.split('-').map(Number);
   const dayKey = DAY_KEY_BY_JS_INDEX[new Date(y, m - 1, d).getDay()];
   return WEEKLY_SCHEDULE[dayKey] || [];
