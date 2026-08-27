@@ -1,4 +1,4 @@
-const CACHE_NAME = 'treinos-isa-v1';
+const CACHE_NAME = 'treinos-isa-v2';
 const APP_SHELL = [
   './',
   './index.html',
