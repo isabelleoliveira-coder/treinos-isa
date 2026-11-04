@@ -1,6 +1,7 @@
 import { PROTOCOL_INFO, TIPS, MOTIVATIONAL_MESSAGES } from '../data/workouts.js';
 import { AVATAR_URL } from '../data/avatar.js';
 import { loadWorkouts, saveWorkouts, loadSessions, saveSessions, loadTheme, saveTheme } from './storage.js';
+import { LAST_BACKUP_KEY, buildBackup, backupFilename, readLastBackup, validateBackup, restoreBackup, deliverBackup } from './backup.js';
 import { icon } from './icons.js';
 import { extractYouTubeId, todayISO, formatDatePT, formatDateShort, daysAgo, bestSetLoad, todaysMotivation, escapeHtml, uid, collectLoggedSets, deriveEditedStatus, deriveFinishedStatus, formatSetLoad } from './utils.js';
 import { renderActiveSession, bindActiveSessionEvents } from './screens/session.js';
@@ -855,6 +856,8 @@ function renderPerfil() {
         </div>
       </button>
 
+      ${renderBackupSection()}
+
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Lembretes da Déka</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${TIPS.map((t) => `
@@ -866,6 +869,163 @@ function renderPerfil() {
       </div>
     </div>
   `;
+}
+
+// ---------------- BACKUP ----------------
+const backupUi = { json: '', importText: '', error: '', pending: null };
+
+function formatBackupWhen(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const day = date.toLocaleDateString('pt-BR');
+  const time = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return `${day}, ${time}`;
+}
+
+function reloadFromStorage() {
+  state.workouts = loadWorkouts();
+  state.sessions = loadSessions();
+  state.theme = loadTheme();
+  document.documentElement.setAttribute('data-theme', state.theme);
+}
+
+function renderBackupSection() {
+  const last = formatBackupWhen(readLastBackup(localStorage));
+  return `
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Backup</div>
+    <div class="card" style="margin-bottom:18px">
+      <p style="color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 10px">Seus treinos ficam só neste celular. Exporte uma cópia para guardar nos Arquivos, no iCloud ou enviar para você mesma.</p>
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:12px">${last ? `Último backup: ${escapeHtml(last)}` : 'Ainda não exportou um backup neste celular.'}</div>
+      <button type="button" class="btn-primary" data-action="export-backup" style="margin-bottom:10px">Exportar backup</button>
+        <label class="btn-ghost" style="display:flex;align-items:center;justify-content:center;margin-bottom:10px;cursor:pointer">
+        Importar arquivo
+        <input id="backup-file" type="file" accept="application/json,.json,text/plain" style="display:none" />
+      </label>
+      <label style="font-size:12px;color:var(--muted);font-weight:600">Ou cole o backup aqui</label>
+      <textarea id="backup-paste" rows="3" placeholder="Cole o JSON do backup" style="margin-top:4px;margin-bottom:8px">${escapeHtml(backupUi.importText)}</textarea>
+      <button type="button" class="btn-ghost" data-action="preview-backup-text">Conferir texto colado</button>
+      ${backupUi.error ? `<div style="color:var(--danger);font-size:12.5px;font-weight:700;margin-top:10px;line-height:1.4">${escapeHtml(backupUi.error)}</div>` : ''}
+      ${backupUi.json ? `
+        <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-top:14px">Se o arquivo não abriu, copie o texto</label>
+        <textarea id="backup-json" readonly rows="6" style="margin-top:4px;margin-bottom:8px">${escapeHtml(backupUi.json)}</textarea>
+        <button type="button" class="btn-ghost" data-action="copy-backup">Copiar</button>
+      ` : ''}
+    </div>
+    ${backupUi.pending ? renderBackupConfirm(backupUi.pending) : ''}
+  `;
+}
+
+function renderBackupConfirm(pending) {
+  const { summary } = pending;
+  const range = summary.from
+    ? (summary.from === summary.to ? `Data: ${formatDatePT(summary.from)}` : `De ${formatDatePT(summary.from)} a ${formatDatePT(summary.to)}`)
+    : 'Sem datas de treino';
+  const fichas = summary.workouts == null
+    ? ''
+    : `<div style="font-size:13.5px;margin-top:4px">${summary.workouts === 1 ? '1 ficha de exercícios' : `${summary.workouts} fichas de exercícios`}</div>`;
+  return `
+    <div class="sheet-overlay" data-action="cancel-backup-import">
+      <div class="sheet" onclick="event.stopPropagation()">
+        <div class="sheet-handle"></div>
+        <h3 class="font-head" style="font-size:19px;margin:0 0 6px">Substituir os dados deste celular?</h3>
+        <p style="color:var(--muted);font-size:13.5px;margin:0 0 14px;line-height:1.5">O que está neste aparelho é trocado pelo backup. Dá para cancelar agora. Se o arquivo for inválido, nada muda.</p>
+        <div class="card" style="margin-bottom:16px">
+          <div style="font-weight:700;font-size:14px">${summary.sessions === 1 ? '1 treino registrado' : `${summary.sessions} treinos registrados`}</div>
+          <div style="color:var(--muted);font-size:13px;margin-top:4px">${range}</div>
+          ${fichas}
+        </div>
+        <button type="button" class="btn-primary" data-action="confirm-backup-import" style="margin-bottom:10px">Substituir meus dados</button>
+        <button type="button" class="btn-ghost" data-action="cancel-backup-import">Cancelar</button>
+      </div>
+    </div>
+  `;
+}
+
+async function copyBackup() {
+  const el = document.getElementById('backup-json');
+  const text = (el && el.value) || backupUi.json;
+  if (!text) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(text);
+    else if (el) {
+      el.focus();
+      el.select();
+      document.execCommand('copy');
+    }
+    showToast('Backup copiado');
+  } catch {
+    showToast('Selecione o texto e copie.');
+  }
+}
+
+function markBackupExported(iso) {
+  localStorage.setItem(LAST_BACKUP_KEY, JSON.stringify(iso));
+}
+
+async function exportBackup() {
+  try {
+    const now = new Date();
+    const payload = buildBackup(localStorage, now);
+    const json = JSON.stringify(payload, null, 2);
+    const filename = backupFilename(now);
+    backupUi.error = '';
+    const how = await deliverBackup(json, filename);
+    if (how === 'cancel') return;
+    markBackupExported(payload.exportedAt);
+    backupUi.json = how === 'text' ? json : '';
+    if (how === 'share') showToast('Backup enviado');
+    else if (how === 'download') showToast('Backup baixado');
+    else showToast('Copie o texto do backup');
+  } catch (err) {
+    console.error(err);
+    backupUi.error = 'Não consegui exportar o backup. Nada foi apagado.';
+    render();
+  }
+}
+
+function previewBackupText(text, { remember = true } = {}) {
+  if (remember) backupUi.importText = text;
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    backupUi.pending = null;
+    backupUi.error = 'O texto não é um JSON válido. Nada foi alterado.';
+    render();
+    return;
+  }
+  const result = validateBackup(data);
+  if (!result.ok) {
+    backupUi.pending = null;
+    backupUi.error = result.error;
+    render();
+    return;
+  }
+  backupUi.error = '';
+  backupUi.pending = result;
+  render();
+}
+
+function confirmBackupImport() {
+  const pending = backupUi.pending;
+  if (!pending) return;
+  try {
+    restoreBackup(localStorage, pending.keys);
+    if (pending.exportedAt) localStorage.setItem(LAST_BACKUP_KEY, JSON.stringify(pending.exportedAt));
+  } catch (err) {
+    console.error(err);
+    backupUi.error = 'Não consegui gravar o backup. Seus dados continuam como estavam.';
+    backupUi.pending = null;
+    render();
+    return;
+  }
+  backupUi.pending = null;
+  backupUi.error = '';
+  backupUi.importText = '';
+  backupUi.json = '';
+  reloadFromStorage();
+  showToast('Backup restaurado');
 }
 
 // ---------------- MODAL: registro retroativo ----------------
@@ -928,6 +1088,24 @@ function bindGlobalEvents(app, browseWorkout) {
   app.querySelectorAll('[data-role="retro-load"]').forEach((el) => {
     el.addEventListener('input', (e) => { retroDraft.loads[el.dataset.ex] = e.target.value; });
   });
+
+  const backupFile = document.getElementById('backup-file');
+  if (backupFile) {
+    backupFile.addEventListener('change', () => {
+      const file = backupFile.files && backupFile.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => previewBackupText(String(reader.result || ''), { remember: false });
+      reader.onerror = () => {
+        backupUi.error = 'Não consegui ler o arquivo. Nada foi alterado.';
+        backupUi.pending = null;
+        render();
+      };
+      reader.readAsText(file);
+    });
+  }
+  const backupPaste = document.getElementById('backup-paste');
+  if (backupPaste) backupPaste.addEventListener('input', (e) => { backupUi.importText = e.target.value; });
 
   if (browseWorkout) {
     app.querySelectorAll('[data-role="edit-video-url"]').forEach((el) => {
@@ -1066,6 +1244,19 @@ function handleAction(action, ds) {
       deleteSession(ds.session); break;
     case 'toggle-theme':
       toggleTheme(); break;
+    case 'export-backup':
+      exportBackup(); break;
+    case 'copy-backup':
+      copyBackup(); break;
+    case 'preview-backup-text': {
+      const paste = document.getElementById('backup-paste');
+      previewBackupText(paste ? paste.value : backupUi.importText);
+      break;
+    }
+    case 'cancel-backup-import':
+      backupUi.pending = null; render(); break;
+    case 'confirm-backup-import':
+      confirmBackupImport(); break;
     case 'open-log-modal':
       retroDraft = { workoutId: state.workouts[0].id, date: todayISO(), completed: true, loads: {}, note: '' };
       state.logModalOpen = true; render(); break;

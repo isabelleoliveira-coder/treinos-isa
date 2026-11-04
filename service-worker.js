@@ -1,4 +1,4 @@
-const CACHE_NAME = 'treinos-isa-v8';
+const CACHE_NAME = 'treinos-isa-v9';
 const APP_SHELL = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const APP_SHELL = [
   './js/icons.js',
   './js/storage.js',
   './js/utils.js',
+  './js/backup.js',
   './js/screens/session.js',
   './data/workouts.js',
   './data/avatar.js',
