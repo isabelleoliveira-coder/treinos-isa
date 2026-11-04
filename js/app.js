@@ -568,7 +568,7 @@ function renderHoje() {
 
     <div style="padding:14px 20px 4px">
       <div class="card card-raised" style="border-left:3px solid var(--accent);padding:18px 20px">
-        <p class="font-quote" style="font-size:16.5px;line-height:1.35;color:var(--accent);margin:0;letter-spacing:0.1px">${escapeHtml(motivation)}</p>
+        <p class="font-quote" style="font-size:16px;line-height:1.45;color:var(--text);margin:0">${escapeHtml(motivation)}</p>
       </div>
     </div>
     <div style="display:flex;gap:10px;padding:14px 20px 0">

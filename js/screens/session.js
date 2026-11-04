@@ -312,12 +312,24 @@ function renderExitSheet() {
     <div class="sheet-overlay" data-sact="cancel-exit">
       <div class="sheet" onclick="event.stopPropagation()">
         <div class="sheet-handle"></div>
-        <h3 class="font-head" style="font-size:19px;margin:0 0 6px">Opções do treino</h3>
-        <p style="color:var(--muted);font-size:13.5px;margin:0 0 20px;line-height:1.5">Você pode marcar como feito direto, sair salvando o que já foi feito (inclusive exercícios pulados), ou sair sem salvar nada.</p>
-        <button class="btn-primary" data-sact="mark-as-done" style="margin-bottom:10px">Marcar treino como feito</button>
-        <button class="btn-ghost" data-sact="exit-save" style="border-color:var(--accent);color:var(--accent);margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:6px">${icon('check', 14)} Sair e salvar como incompleto</button>
-        <button data-sact="exit-discard" style="background:none;border:none;color:var(--danger);font-size:13.5px;font-weight:700;width:100%;padding:12px 0">Sair sem salvar</button>
-        <button class="btn-ghost" data-sact="cancel-exit">Continuar treinando</button>
+        <h3 class="font-head" style="font-size:19px;margin:0 0 6px">Sair do treino?</h3>
+        <p style="color:var(--muted);font-size:13.5px;margin:0 0 16px;line-height:1.45">O que acontece com o que você já anotou nesta sessão.</p>
+        <button type="button" class="exit-choice primary" data-sact="exit-save">
+          <strong>Guardar e sair</strong>
+          <span>Séries e pulos ficam salvos. O treino entra como incompleto.</span>
+        </button>
+        <button type="button" class="exit-choice secondary" data-sact="mark-as-done">
+          <strong>Marcar como feito e sair</strong>
+          <span>Na próxima tela você confirma. Conta como treino concluído.</span>
+        </button>
+        <button type="button" class="exit-choice secondary" data-sact="cancel-exit">
+          <strong>Continuar treinando</strong>
+          <span>Fecha este menu. Nada muda.</span>
+        </button>
+        <button type="button" class="exit-choice danger" data-sact="exit-discard">
+          <strong>Sair sem guardar</strong>
+          <span>Apaga as anotações desta sessão. O histórico antigo não muda.</span>
+        </button>
       </div>
     </div>
   `;
