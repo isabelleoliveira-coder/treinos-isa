@@ -2,7 +2,7 @@ import { PROTOCOL_INFO, TIPS, MOTIVATIONAL_MESSAGES } from '../data/workouts.js'
 import { AVATAR_URL } from '../data/avatar.js';
 import { loadWorkouts, saveWorkouts, loadSessions, saveSessions, loadTheme, saveTheme } from './storage.js';
 import { icon } from './icons.js';
-import { extractYouTubeId, todayISO, formatDatePT, formatDateShort, daysAgo, bestSetLoad, todaysMotivation, escapeHtml, uid, collectLoggedSets, deriveEditedStatus } from './utils.js';
+import { extractYouTubeId, todayISO, formatDatePT, formatDateShort, daysAgo, bestSetLoad, todaysMotivation, escapeHtml, uid, collectLoggedSets, deriveEditedStatus, deriveFinishedStatus, formatSetLoad } from './utils.js';
 import { renderActiveSession, bindActiveSessionEvents } from './screens/session.js';
 
 const TRACKED = new Set(['completed', 'partial', 'loads']);
@@ -58,41 +58,47 @@ export function updateExercise(workoutId, exerciseId, patch) {
 
 export function saveSession(session) {
   state.sessions = [...state.sessions, session];
+  recomputeAllPrs();
   persistSessions();
   showToast(SESSION_TOAST[session.status] || 'Treino salvo ✓');
 }
 
 function replaceSession(session) {
   state.sessions = state.sessions.map((s) => (s.id === session.id ? session : s));
+  recomputeAllPrs();
   persistSessions();
   showToast('Treino atualizado');
 }
 
 export function deleteSession(id) {
   state.sessions = state.sessions.filter((s) => s.id !== id);
+  recomputeAllPrs();
   persistSessions();
   render();
 }
 
+function sessionsNewestFirst() {
+  return [...state.sessions].sort(compareSessionsDesc);
+}
+
 export function getLastSetValue(exerciseId, setIdx) {
-  const sessions = state.sessions;
-  for (let i = sessions.length - 1; i >= 0; i--) {
-    const arr = sessions[i].sets?.[exerciseId];
+  for (const session of sessionsNewestFirst()) {
+    const arr = session.sets?.[exerciseId];
     if (arr && arr.length) return arr[setIdx] || arr[arr.length - 1];
   }
   return null;
 }
 
 function lastSetsFor(exerciseId) {
-  for (let i = state.sessions.length - 1; i >= 0; i--) {
-    const arr = state.sessions[i].sets?.[exerciseId];
+  for (const session of sessionsNewestFirst()) {
+    const arr = session.sets?.[exerciseId];
     if (arr && arr.length) return arr;
   }
   return null;
 }
 
 function formatSetsInline(arr) {
-  return (arr || []).map((set) => `${set.carga}kg${set.reps ? `×${set.reps}` : ''}`).join(' · ');
+  return (arr || []).map((set) => formatSetLoad(set)).filter(Boolean).join(' · ');
 }
 
 export function bestEverLoad(exerciseId) {
@@ -104,20 +110,34 @@ export function bestEverLoad(exerciseId) {
   return best;
 }
 
-function computePrs(session) {
+function computePrs(session, all) {
   const workout = state.workouts.find((w) => w.id === session.workoutId);
   if (!workout) return [];
   return workout.exercises.filter((e) => {
     const now = bestSetLoad(session.sets?.[e.id]);
     if (now == null) return false;
     let before = null;
-    state.sessions.forEach((s) => {
+    all.forEach((s) => {
       if (s.id === session.id) return;
       const b = bestSetLoad(s.sets?.[e.id]);
       if (b != null && (before == null || b > before)) before = b;
     });
     return before == null || now > before;
   }).map((e) => e.id);
+}
+
+function sameIds(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((id, i) => id === b[i]);
+}
+
+// Um registro editado ou apagado muda o recorde dos outros. Recalcula todos.
+function recomputeAllPrs() {
+  const all = state.sessions;
+  state.sessions = all.map((session) => {
+    const prs = computePrs(session, all);
+    return sameIds(session.prs, prs) ? session : { ...session, prs };
+  });
 }
 
 function compareSessionsDesc(a, b) {
@@ -133,7 +153,7 @@ function exerciseName(workoutId, exId) {
 }
 
 function suggestedWorkoutId() {
-  const last = [...state.sessions].reverse().find((s) => s.status !== 'skipped' && s.status !== 'loads');
+  const last = sessionsNewestFirst().find((s) => s.status !== 'skipped' && s.status !== 'loads');
   if (!last) return state.workouts[0].id;
   const idx = state.workouts.findIndex((w) => w.id === last.workoutId);
   if (idx < 0) return state.workouts[0].id;
@@ -155,7 +175,7 @@ export function startSession(workoutId) {
   state.activeSession = {
     workoutId, exIdx: 0, phase: 'exercise', loggedSets: {}, skippedIds: [], editingIdx: null,
     carga: '', reps: '', videoOpen: false, confirmExit: false, exerciseListOpen: false,
-    forceCompleted: false,
+    forceCompleted: false, skipOfferDismissed: false,
     restRemaining: 0, restPaused: false, restReady: false, restTotal: 0,
     startedAt: new Date().toISOString(), timerHandle: null,
   };
@@ -188,7 +208,6 @@ export function exitSession(save) {
       status: hasAny ? 'partial' : 'skipped', sets: s.loggedSets, skippedExerciseIds,
       note: 'Treino interrompido', startedAt: s.startedAt, finishedAt: new Date().toISOString(),
     };
-    session.prs = computePrs(session);
     saveSession(session);
     return;
   }
@@ -200,13 +219,17 @@ export function finishSessionFromSummary() {
   const workout = state.workouts.find((w) => w.id === s.workoutId);
   if (s.timerHandle) clearInterval(s.timerHandle);
   const anySets = workout.exercises.some((e) => (s.loggedSets[e.id] || []).length);
+  const allResolved = workout.exercises.every((e) => {
+    const logged = (s.loggedSets[e.id] || []).length;
+    const skipped = (s.skippedIds || []).includes(e.id) && logged === 0;
+    return skipped || logged >= e.setsCount;
+  });
   const session = {
     id: uid(), workoutId: s.workoutId, workoutName: workout.name, date: todayISO(),
-    status: s.forceCompleted || anySets ? 'completed' : 'skipped',
+    status: deriveFinishedStatus({ anySets, forceCompleted: !!s.forceCompleted, allResolved }),
     sets: s.loggedSets, skippedExerciseIds: skippedIdsFromActive(s, workout), note: '',
     startedAt: s.startedAt, finishedAt: new Date().toISOString(),
   };
-  session.prs = computePrs(session);
   state.activeSession = null;
   state.tab = 'hoje';
   state.browseWorkoutId = null;
@@ -326,7 +349,6 @@ function saveLoads() {
     status: 'loads', sets, skippedExerciseIds: [], note: (draft.note || '').trim(),
     finishedAt: new Date().toISOString(),
   };
-  session.prs = computePrs(session);
   state.loadsDraft = null;
   state.tab = 'historico';
   state.historicoSubTab = 'cargas';
@@ -357,7 +379,6 @@ function saveEdit() {
     startedAt: draft.startedAt,
     finishedAt: draft.finishedAt || new Date().toISOString(),
   };
-  session.prs = computePrs(session);
   state.editDraft = null;
   replaceSession(session);
 }
@@ -510,7 +531,9 @@ function renderHoje() {
   const motivation = todaysMotivation(MOTIVATIONAL_MESSAGES);
   const suggestedId = suggestedWorkoutId();
 
-  const tracked = state.sessions.filter((s) => TRACKED.has(s.status));
+  const tracked = state.sessions
+    .filter((s) => TRACKED.has(s.status))
+    .sort((a, b) => compareSessionsDesc(b, a));
   let lastImprovement = null;
   outer:
   for (let i = tracked.length - 1; i >= 0; i--) {
@@ -1065,7 +1088,6 @@ function handleAction(action, ds) {
         id: uid(), workoutId: retroDraft.workoutId, workoutName: workout.name, date: retroDraft.date,
         status: retroDraft.completed ? 'completed' : 'skipped', sets, skippedExerciseIds: [], note: retroDraft.note.trim(),
       };
-      session.prs = computePrs(session);
       state.logModalOpen = false;
       saveSession(session);
       break;

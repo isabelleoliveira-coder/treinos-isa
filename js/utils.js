@@ -42,35 +42,62 @@ export function bestSetLoad(setsArr) {
   return vals.length ? Math.max(...vals) : null;
 }
 
-// Aceita "12,5" e "12.5". Vazio ou inválido vira null — a linha não entra no registro.
+// Número puro ("12,5", "12.5"). Texto como "20kg" ou "20 cada lado" não é número.
 export function cleanCarga(value) {
   const s = String(value ?? '').trim().replace(',', '.');
-  if (!s) return null;
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
   const n = Number(s);
   if (!Number.isFinite(n) || n < 0) return null;
   return String(n);
 }
 
+// Mantém o texto da carga. Só normaliza vírgula quando a linha inteira é um número.
+// Linha some apenas se carga e repetição estão vazias.
+export function keepCargaText(value) {
+  const s = String(value ?? '').trim();
+  if (/^\d+,\d+$/.test(s)) return s.replace(',', '.');
+  return s;
+}
+
 export function collectLoggedSets(rows) {
   const out = [];
   (rows || []).forEach((row) => {
-    const carga = cleanCarga(row?.carga);
-    if (carga == null) return;
+    const carga = keepCargaText(row?.carga);
     const reps = String(row?.reps ?? '').trim();
+    if (!carga && !reps) return;
     out.push({ carga, reps: reps || null });
   });
   return out;
 }
 
+export function formatSetLoad(set) {
+  if (!set) return '';
+  const carga = set.carga == null ? '' : String(set.carga).trim();
+  const reps = set.reps == null ? '' : String(set.reps).trim();
+  if (!carga && !reps) return '';
+  const load = !carga ? '' : (/^\d+([.,]\d+)?$/.test(carga) ? `${carga.replace(',', '.')}kg` : carga);
+  if (load && reps) return `${load}×${reps}`;
+  return load || reps;
+}
+
 // Status de um registro já salvo, depois de editar séries / pulos.
-// "loads" continua só cargas. Treino concluído com exercícios pulados
-// segue concluído, desde que cada exercício tenha série ou esteja pulado.
+// "Fiz" / concluído continua concluído se ainda houver alguma carga —
+// registros antigos não têm série em todo exercício da ficha.
 export function deriveEditedStatus(original, doneCount, exerciseCount, skipCount) {
   if (doneCount === 0) return 'skipped';
   if (original === 'loads') return 'loads';
+  if (original === 'completed') return 'completed';
   if (skipCount === 0 && doneCount === exerciseCount) return 'completed';
-  if (original === 'completed' && doneCount + skipCount === exerciseCount) return 'completed';
   return 'partial';
+}
+
+// Encerrar a sessão: pendente ou pela metade não vira "concluído".
+// forceCompleted é o atalho explícito "Marcar treino como feito".
+export function deriveFinishedStatus({ anySets, forceCompleted, allResolved }) {
+  if (forceCompleted) return 'completed';
+  if (!anySets) return 'skipped';
+  if (!allResolved) return 'partial';
+  return 'completed';
 }
 
 export function daysUntilSummer() {

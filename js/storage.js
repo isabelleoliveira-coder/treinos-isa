@@ -42,6 +42,15 @@ function normalizeSession(s) {
   if (!Array.isArray(next.skippedExerciseIds)) {
     next = { ...next, skippedExerciseIds: [] };
   }
+  // Registro antigo pode ter `completed: true` e já ter `sets`, sem `status`.
+  // Sem isso, editar o card tiraria o treino da contagem da semana.
+  if (!next.status) {
+    const anySets = !!(next.sets && Object.keys(next.sets).some((id) => (next.sets[id] || []).length));
+    let status = 'skipped';
+    if (next.completed === true) status = 'completed';
+    else if (anySets) status = 'partial';
+    next = { ...next, status };
+  }
   return next;
 }
 

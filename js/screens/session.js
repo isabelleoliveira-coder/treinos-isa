@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { extractYouTubeId, fmtTime, bestSetLoad, escapeHtml } from '../utils.js';
+import { extractYouTubeId, fmtTime, bestSetLoad, escapeHtml, formatSetLoad } from '../utils.js';
 
 const PROGRESS_LABEL = {
   done: 'Feito',
@@ -42,8 +42,35 @@ export function renderActiveSession(state, helpers) {
   const { workout, ex } = currentExercise(state);
 
   if (s.phase === 'summary') return renderSummary(state, workout, helpers);
+  if (s.phase === 'skip-offer') return renderSkipOffer(state, workout);
   if (s.phase === 'rest') return renderRest(state, workout, ex);
   return renderExercisePhase(state, workout, ex, helpers);
+}
+
+function skippedExercises(workout, s) {
+  return workout.exercises
+    .map((e, i) => ({ e, i }))
+    .filter(({ e }) => (s.skippedIds || []).includes(e.id) && !(s.loggedSets[e.id] || []).length);
+}
+
+function renderSkipOffer(state, workout) {
+  const skipped = skippedExercises(workout, state.activeSession);
+  return `
+    <div style="background:var(--bg);min-height:100vh;color:var(--text);max-width:480px;margin:0 auto;display:flex;flex-direction:column">
+      <div style="flex:1;overflow:auto;padding:48px 24px 24px">
+        <h1 class="font-head" style="font-size:26px;margin:0 0 8px">Ainda tem exercício pulado</h1>
+        <p style="color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 18px">Dá pra fazer agora ou seguir para o resumo. Se seguir, ele continua marcado como pulado.</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${skipped.map(({ e, i }, n) => `
+            <button type="button" class="${n === 0 ? 'btn-primary' : 'btn-ghost'}" data-sact="do-skipped" data-idx="${i}">Fazer agora: ${escapeHtml(e.name)}</button>
+          `).join('')}
+        </div>
+      </div>
+      <div style="padding:0 24px 28px">
+        <button type="button" class="btn-ghost" data-sact="dismiss-skip-offer">Seguir para o resumo</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderExercisePhase(state, workout, ex, helpers) {
@@ -123,7 +150,7 @@ function renderExercisePhase(state, workout, ex, helpers) {
         ${doneCount > 0 ? `
           <div style="display:flex;gap:6px;justify-content:center;margin-top:20px;flex-wrap:wrap">
             ${loggedForEx.map((set, i) => `
-              <button class="set-chip ${s.editingIdx === i ? 'active' : ''}" data-sact="edit-set" data-idx="${i}">${i + 1}: ${escapeHtml(set.carga)}kg×${escapeHtml(set.reps || '?')}</button>
+              <button class="set-chip ${s.editingIdx === i ? 'active' : ''}" data-sact="edit-set" data-idx="${i}">${i + 1}: ${escapeHtml(formatSetLoad(set) || '?')}</button>
             `).join('')}
           </div>` : ''}
       </div>
@@ -228,10 +255,14 @@ function renderSummary(state, workout, helpers) {
   const anySets = totalSets > 0;
   const pending = workout.exercises.filter((e) => exerciseProgress(s, e) === 'pending');
   const hasSkipped = workout.exercises.some((e) => exerciseProgress(s, e) === 'skipped');
+  const hasPartial = workout.exercises.some((e) => exerciseProgress(s, e) === 'partial');
   let title = 'Treino concluído';
   if (!anySets && !s.forceCompleted) title = 'Nada registrado';
-  else if (hasSkipped || pending.length) title = 'Treino finalizado';
-  const saveLabel = !anySets && !s.forceCompleted ? 'Salvar como não feito' : 'Salvar e finalizar';
+  else if (hasSkipped || pending.length || hasPartial) title = 'Treino finalizado';
+  const unfinished = !s.forceCompleted && (pending.length > 0 || hasPartial);
+  const saveLabel = !anySets && !s.forceCompleted
+    ? 'Salvar como não feito'
+    : (unfinished ? 'Salvar como incompleto' : 'Salvar e finalizar');
 
   return `
     <div style="background:var(--bg);min-height:100vh;color:var(--text);max-width:480px;margin:0 auto;display:flex;flex-direction:column">
@@ -255,7 +286,7 @@ function renderSummary(state, workout, helpers) {
             const st = exerciseProgress(s, e);
             const arr = s.loggedSets[e.id] || [];
             const detail = arr.length
-              ? arr.map((set) => `${set.carga}kg${set.reps ? `×${set.reps}` : ''}`).join(' · ')
+              ? arr.map((set) => formatSetLoad(set)).filter(Boolean).join(' · ')
               : PROGRESS_LABEL[st];
             const detailClass = arr.length ? '' : `ex-status ex-status-${st}`;
             return `
@@ -264,7 +295,7 @@ function renderSummary(state, workout, helpers) {
                 <span class="${detailClass}" style="text-align:right;font-size:12px;font-weight:700">${escapeHtml(detail)}</span>
               </div>`;
           }).join('')}
-          ${pending.length ? `<div style="color:var(--faint);font-size:12px;line-height:1.45">Pendente não entra como pulado. Se não for fazer, volte e toque em Pular exercício — ou use o botão abaixo.</div>` : ''}
+          ${unfinished ? `<div style="color:var(--faint);font-size:12px;line-height:1.45">Pendente ou pela metade deixa o treino incompleto. Marque como pulado o que não for fazer.</div>` : ''}
         </div>
       </div>
       <div style="padding:0 24px 28px;display:flex;flex-direction:column;gap:8px">
@@ -362,18 +393,22 @@ export function bindActiveSessionEvents(app, state, ctx) {
       case 'skip-exercise': skipExercise(); break;
       case 'unskip': {
         s.skippedIds = (s.skippedIds || []).filter((id) => id !== ex.id);
+        s.skipOfferDismissed = false;
         ctx.render();
         break;
       }
       case 'finish-now': {
         if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
-        s.exerciseListOpen = false;
-        s.confirmExit = false;
+        goToSummaryOrOffer();
+        break;
+      }
+      case 'do-skipped': goToExercise(Number(ds.idx)); break;
+      case 'dismiss-skip-offer':
+        s.skipOfferDismissed = true;
         s.forceCompleted = false;
         s.phase = 'summary';
         ctx.render();
         break;
-      }
       case 'skip-pending': {
         s.skippedIds = s.skippedIds || [];
         workout.exercises.forEach((e) => {
@@ -428,6 +463,20 @@ export function bindActiveSessionEvents(app, state, ctx) {
     ctx.render();
   }
 
+  function goToSummaryOrOffer() {
+    if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
+    s.exerciseListOpen = false;
+    s.confirmExit = false;
+    if (skippedExercises(workout, s).length && !s.skipOfferDismissed) {
+      s.phase = 'skip-offer';
+      ctx.render();
+      return;
+    }
+    s.forceCompleted = false;
+    s.phase = 'summary';
+    ctx.render();
+  }
+
   function skipExercise() {
     const hasSets = (s.loggedSets[ex.id] || []).length > 0;
     if (!hasSets) {
@@ -437,10 +486,7 @@ export function bindActiveSessionEvents(app, state, ctx) {
     if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
     const next = nextExerciseIndex(workout, s, false);
     if (next == null) {
-      s.phase = 'summary';
-      s.exerciseListOpen = false;
-      s.forceCompleted = false;
-      ctx.render();
+      goToSummaryOrOffer();
       return;
     }
     s.exIdx = next;
@@ -459,7 +505,9 @@ export function bindActiveSessionEvents(app, state, ctx) {
     arr[activeIdx] = { carga: s.carga, reps: s.reps };
     s.loggedSets = { ...s.loggedSets, [ex.id]: arr };
     s.editingIdx = null;
+    const skippedBefore = (s.skippedIds || []).length;
     s.skippedIds = (s.skippedIds || []).filter((id) => id !== ex.id);
+    if (s.skippedIds.length !== skippedBefore) s.skipOfferDismissed = false;
 
     if (isEditingPast) {
       const pendingIdx = arr.length;
@@ -476,9 +524,7 @@ export function bindActiveSessionEvents(app, state, ctx) {
     } else if (nextExerciseIndex(workout, s, false) != null) {
       openRest(ex.restSeconds);
     } else {
-      s.forceCompleted = false;
-      s.phase = 'summary';
-      ctx.render();
+      goToSummaryOrOffer();
     }
   }
 
@@ -514,9 +560,7 @@ export function bindActiveSessionEvents(app, state, ctx) {
     if (finishedExercise) {
       const next = nextExerciseIndex(workout, s, false);
       if (next == null) {
-        s.forceCompleted = false;
-        s.phase = 'summary';
-        ctx.render();
+        goToSummaryOrOffer();
         return;
       }
       s.exIdx = next;
