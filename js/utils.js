@@ -42,6 +42,37 @@ export function bestSetLoad(setsArr) {
   return vals.length ? Math.max(...vals) : null;
 }
 
+// Aceita "12,5" e "12.5". Vazio ou inválido vira null — a linha não entra no registro.
+export function cleanCarga(value) {
+  const s = String(value ?? '').trim().replace(',', '.');
+  if (!s) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return String(n);
+}
+
+export function collectLoggedSets(rows) {
+  const out = [];
+  (rows || []).forEach((row) => {
+    const carga = cleanCarga(row?.carga);
+    if (carga == null) return;
+    const reps = String(row?.reps ?? '').trim();
+    out.push({ carga, reps: reps || null });
+  });
+  return out;
+}
+
+// Status de um registro já salvo, depois de editar séries / pulos.
+// "loads" continua só cargas. Treino concluído com exercícios pulados
+// segue concluído, desde que cada exercício tenha série ou esteja pulado.
+export function deriveEditedStatus(original, doneCount, exerciseCount, skipCount) {
+  if (doneCount === 0) return 'skipped';
+  if (original === 'loads') return 'loads';
+  if (skipCount === 0 && doneCount === exerciseCount) return 'completed';
+  if (original === 'completed' && doneCount + skipCount === exerciseCount) return 'completed';
+  return 'partial';
+}
+
 export function daysUntilSummer() {
   const now = new Date();
   let dec21 = new Date(now.getFullYear(), 11, 21);
