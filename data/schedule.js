@@ -1,6 +1,8 @@
-// Camada de programação/calendário. NÃO contém exercícios de Cross ou HYROX —
-// apenas o rótulo da sessão do dia. Musculação aponta pro workout já cadastrado
-// (workoutLink: true → abre a ficha existente, sem duplicar nada).
+// Programação de Cross, HYROX, corrida e afins.
+// A tela de calendário (Hoje / Minha Semana) foi removida do app.
+// Este arquivo fica no repositório para a programação não se perder, mas
+// nenhuma tela importa mais estas sessões. O que a Isa já marcou como feito
+// continua no aparelho, na chave treinosIsa.scheduleLog, e não é apagado.
 
 export const DAY_ORDER = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
 

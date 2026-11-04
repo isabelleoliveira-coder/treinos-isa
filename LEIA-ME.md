@@ -56,6 +56,19 @@ Tudo fica salvo no `localStorage` do navegador/app nesse aparelho específico
 dia você trocar de celular, vai começar com o histórico zerado nesse app
 (diferente da versão que roda dentro do Claude, que fica na sua conta).
 
+Dá para guardar uma cópia: em Perfil, toque em **Exportar backup** e salve o
+arquivo nos Arquivos, no iCloud, ou envie para você mesma. **Importar backup**
+devolve esses dados neste aparelho.
+
+## Como atualizar no celular
+
+Quando tiver versão nova do app:
+
+1. Abra o app **com internet**.
+2. Feche o app por completo e abra de novo. A atualização entra sozinha.
+3. **Não apague o ícone da Tela de Início.** No iPhone, tirar o ícone apaga os treinos salvos nesse app.
+4. Logo depois de atualizar, vá em Perfil → **Exportar backup** e guarde o arquivo.
+
 ## Se quiser atualizar algo depois (novo vídeo, ajuste no treino)
 
 Duas opções:

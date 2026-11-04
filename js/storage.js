@@ -26,16 +26,32 @@ function safeSet(key, value) {
   }
 }
 
-// Migra sessões antigas (formato loads) para o formato novo (sets)
+// Migra sessões antigas (formato loads) para o formato novo (sets).
+// skippedExerciseIds entra vazio nos registros antigos — nada é apagado.
 function normalizeSession(s) {
-  if (s.sets) return s;
-  const sets = {};
-  if (s.loads) {
-    Object.entries(s.loads).forEach(([exId, val]) => {
-      if (val !== '' && val != null) sets[exId] = [{ carga: val, reps: null }];
-    });
+  let next = s;
+  if (!s.sets) {
+    const sets = {};
+    if (s.loads) {
+      Object.entries(s.loads).forEach(([exId, val]) => {
+        if (val !== '' && val != null) sets[exId] = [{ carga: val, reps: null }];
+      });
+    }
+    next = { ...s, sets, status: s.completed ? 'completed' : 'skipped' };
   }
-  return { ...s, sets, status: s.completed ? 'completed' : 'skipped' };
+  if (!Array.isArray(next.skippedExerciseIds)) {
+    next = { ...next, skippedExerciseIds: [] };
+  }
+  // Registro antigo pode ter `completed: true` e já ter `sets`, sem `status`.
+  // Sem isso, editar o card tiraria o treino da contagem da semana.
+  if (!next.status) {
+    const anySets = !!(next.sets && Object.keys(next.sets).some((id) => (next.sets[id] || []).length));
+    let status = 'skipped';
+    if (next.completed === true) status = 'completed';
+    else if (anySets) status = 'partial';
+    next = { ...next, status };
+  }
+  return next;
 }
 
 export function loadWorkouts() {
@@ -57,6 +73,9 @@ export function loadTheme() {
 export function saveTheme(theme) {
   return safeSet(KEYS.theme, theme);
 }
+// O calendário de Cross/HYROX/corrida saiu da interface. Estas funções
+// continuam aqui para não apagar o registro antigo (treinosIsa.scheduleLog)
+// que já está no aparelho — o app só não lê mais esse calendário na tela.
 export function loadScheduleLog() {
   return safeGet(KEYS.scheduleLog, {});
 }
