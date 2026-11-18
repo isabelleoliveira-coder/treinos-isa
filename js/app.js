@@ -1,6 +1,6 @@
-import { PROTOCOL_INFO, TIPS, MOTIVATIONAL_MESSAGES } from '../data/workouts.js';
+import { CLASSIC_WORKOUTS, DG_WORKOUTS, CYCLE_WEEKS, PROTOCOL_INFO, TIPS, MOTIVATIONAL_MESSAGES } from '../data/workouts.js';
 import { AVATAR_URL } from '../data/avatar.js';
-import { loadWorkouts, saveWorkouts, loadSessions, saveSessions, loadTheme, saveTheme } from './storage.js';
+import { loadWorkouts, saveWorkouts, loadSessions, saveSessions, loadTheme, saveTheme, loadActiveSession, saveActiveSession, clearActiveSession, loadArchivedWorkoutLists } from './storage.js';
 import { LAST_BACKUP_KEY, buildBackup, backupFilename, readLastBackup, validateBackup, restoreBackup, deliverBackup } from './backup.js';
 import { icon } from './icons.js';
 import { extractYouTubeId, todayISO, formatDatePT, formatDateShort, daysAgo, bestSetLoad, todaysMotivation, escapeHtml, uid, collectLoggedSets, deriveEditedStatus, deriveFinishedStatus, formatSetLoad } from './utils.js';
@@ -149,16 +149,30 @@ function compareSessionsDesc(a, b) {
   return 0;
 }
 
+function workoutFromAnywhere(workoutId) {
+  const current = state.workouts.find((w) => w.id === workoutId);
+  if (current) return current;
+  const lists = loadArchivedWorkoutLists();
+  for (let i = lists.length - 1; i >= 0; i--) {
+    const found = lists[i].find((w) => w && w.id === workoutId);
+    if (found) return found;
+  }
+  return CLASSIC_WORKOUTS.find((w) => w.id === workoutId) || DG_WORKOUTS.find((w) => w.id === workoutId) || null;
+}
+
 function exerciseName(workoutId, exId) {
-  return state.workouts.find((w) => w.id === workoutId)?.exercises.find((e) => e.id === exId)?.name || exId;
+  return workoutFromAnywhere(workoutId)?.exercises?.find((e) => e.id === exId)?.name || exId;
 }
 
 function suggestedWorkoutId() {
   const last = sessionsNewestFirst().find((s) => s.status !== 'skipped' && s.status !== 'loads');
   if (!last) return state.workouts[0].id;
-  const idx = state.workouts.findIndex((w) => w.id === last.workoutId);
+  const classic = new Set(['A', 'B', 'C']);
+  const sameGroup = state.workouts.filter((w) => classic.has(w.id) === classic.has(last.workoutId));
+  const group = sameGroup.length ? sameGroup : state.workouts;
+  const idx = group.findIndex((w) => w.id === last.workoutId);
   if (idx < 0) return state.workouts[0].id;
-  return state.workouts[(idx + 1) % state.workouts.length].id;
+  return group[(idx + 1) % group.length].id;
 }
 
 function blankRow() {
@@ -177,10 +191,84 @@ export function startSession(workoutId) {
     workoutId, exIdx: 0, phase: 'exercise', loggedSets: {}, skippedIds: [], editingIdx: null,
     carga: '', reps: '', videoOpen: false, confirmExit: false, exerciseListOpen: false,
     forceCompleted: false, skipOfferDismissed: false,
-    restRemaining: 0, restPaused: false, restReady: false, restTotal: 0,
-    startedAt: new Date().toISOString(), timerHandle: null,
+    startedAt: new Date().toISOString(),
   };
   initSetInputs(workout.exercises[0]);
+  render();
+}
+
+function serializeActiveSession(s) {
+  const workout = state.workouts.find((w) => w.id === s.workoutId);
+  const phase = s.phase === 'summary' || s.phase === 'skip-offer' ? s.phase : 'exercise';
+  return {
+    workoutId: s.workoutId,
+    workoutName: workout?.name || s.workoutId,
+    exIdx: s.exIdx,
+    phase,
+    loggedSets: s.loggedSets || {},
+    skippedIds: s.skippedIds || [],
+    editingIdx: s.editingIdx ?? null,
+    carga: s.carga ?? '',
+    reps: s.reps ?? '',
+    videoOpen: !!s.videoOpen,
+    exerciseListOpen: !!s.exerciseListOpen,
+    forceCompleted: !!s.forceCompleted,
+    skipOfferDismissed: !!s.skipOfferDismissed,
+    startedAt: s.startedAt,
+  };
+}
+
+export function persistActiveSession() {
+  if (!state.activeSession) return;
+  saveActiveSession(serializeActiveSession(state.activeSession));
+}
+
+function hydrateActiveSession(saved, workout) {
+  const loggedSets = {};
+  if (saved.loggedSets && typeof saved.loggedSets === 'object' && !Array.isArray(saved.loggedSets)) {
+    Object.entries(saved.loggedSets).forEach(([id, arr]) => {
+      if (!Array.isArray(arr)) return;
+      loggedSets[id] = arr.map((set) => ({
+        carga: set?.carga != null ? String(set.carga) : '',
+        reps: set?.reps != null ? String(set.reps) : '',
+      }));
+    });
+  }
+  let exIdx = Number(saved.exIdx);
+  if (!Number.isInteger(exIdx) || !workout.exercises[exIdx]) exIdx = 0;
+  const phase = saved.phase === 'summary' || saved.phase === 'skip-offer' ? saved.phase : 'exercise';
+  return {
+    workoutId: workout.id,
+    exIdx,
+    phase,
+    loggedSets,
+    skippedIds: Array.isArray(saved.skippedIds) ? saved.skippedIds.filter((id) => typeof id === 'string') : [],
+    editingIdx: Number.isInteger(saved.editingIdx) ? saved.editingIdx : null,
+    carga: saved.carga != null ? String(saved.carga) : '',
+    reps: saved.reps != null ? String(saved.reps) : '',
+    videoOpen: !!saved.videoOpen,
+    confirmExit: false,
+    exerciseListOpen: !!saved.exerciseListOpen,
+    forceCompleted: !!saved.forceCompleted,
+    skipOfferDismissed: !!saved.skipOfferDismissed,
+    startedAt: typeof saved.startedAt === 'string' ? saved.startedAt : new Date().toISOString(),
+  };
+}
+
+function resumeActiveSession() {
+  const saved = loadActiveSession();
+  const workout = saved && state.workouts.find((w) => w.id === saved.workoutId);
+  if (!workout) {
+    clearActiveSession();
+    render();
+    return;
+  }
+  state.activeSession = hydrateActiveSession(saved, workout);
+  state.tab = 'hoje';
+  state.browseWorkoutId = null;
+  state.loadsDraft = null;
+  state.editDraft = null;
+  state.logModalOpen = false;
   render();
 }
 
@@ -196,19 +284,20 @@ function initSetInputs(ex) {
 
 export function exitSession(save) {
   const s = state.activeSession;
-  if (s.timerHandle) clearInterval(s.timerHandle);
+  if (!s) return;
   const workout = state.workouts.find((w) => w.id === s.workoutId);
-  const skippedExerciseIds = skippedIdsFromActive(s, workout);
-  const hasAny = Object.values(s.loggedSets).some((arr) => arr && arr.length);
+  const skippedExerciseIds = workout ? skippedIdsFromActive(s, workout) : [];
+  const hasAny = Object.values(s.loggedSets || {}).some((arr) => arr && arr.length);
+  const session = save && workout && (hasAny || skippedExerciseIds.length) ? {
+    id: uid(), workoutId: workout.id, workoutName: workout.name, date: todayISO(),
+    status: hasAny ? 'partial' : 'skipped', sets: s.loggedSets, skippedExerciseIds,
+    note: 'Treino interrompido', startedAt: s.startedAt, finishedAt: new Date().toISOString(),
+  } : null;
   state.activeSession = null;
+  clearActiveSession();
   state.tab = 'hoje';
   state.browseWorkoutId = null;
-  if (save && (hasAny || skippedExerciseIds.length)) {
-    const session = {
-      id: uid(), workoutId: workout.id, workoutName: workout.name, date: todayISO(),
-      status: hasAny ? 'partial' : 'skipped', sets: s.loggedSets, skippedExerciseIds,
-      note: 'Treino interrompido', startedAt: s.startedAt, finishedAt: new Date().toISOString(),
-    };
+  if (session) {
     saveSession(session);
     return;
   }
@@ -217,8 +306,14 @@ export function exitSession(save) {
 
 export function finishSessionFromSummary() {
   const s = state.activeSession;
+  if (!s) return;
   const workout = state.workouts.find((w) => w.id === s.workoutId);
-  if (s.timerHandle) clearInterval(s.timerHandle);
+  if (!workout) {
+    state.activeSession = null;
+    clearActiveSession();
+    render();
+    return;
+  }
   const anySets = workout.exercises.some((e) => (s.loggedSets[e.id] || []).length);
   const allResolved = workout.exercises.every((e) => {
     const logged = (s.loggedSets[e.id] || []).length;
@@ -232,6 +327,7 @@ export function finishSessionFromSummary() {
     startedAt: s.startedAt, finishedAt: new Date().toISOString(),
   };
   state.activeSession = null;
+  clearActiveSession();
   state.tab = 'hoje';
   state.browseWorkoutId = null;
   saveSession(session);
@@ -263,7 +359,7 @@ function ensureLoadsRows(workoutId) {
 }
 
 function buildEditDraft(session) {
-  const workout = state.workouts.find((w) => w.id === session.workoutId);
+  const workout = workoutFromAnywhere(session.workoutId);
   const order = [];
   const names = new Map();
   (workout?.exercises || []).forEach((ex) => { order.push(ex.id); names.set(ex.id, ex.name); });
@@ -421,7 +517,7 @@ function renderLoadsLogger() {
     <div style="padding:16px 20px 28px">
       <button type="button" class="btn-icon" data-action="close-loads" style="color:var(--accent);gap:4px;padding:0;margin-bottom:12px;font-size:13px;font-weight:600">${icon('chevronLeft', 16)} Voltar</button>
       <h2 class="font-head" style="font-size:24px;margin:0">Anotar cargas</h2>
-      <p style="color:var(--muted);font-size:13px;margin:6px 0 16px;line-height:1.45">Registra só o peso que quiser. Não precisa completar o treino, passar pelo timer nem preencher repetição. Linha em branco fica de fora.</p>
+      <p style="color:var(--muted);font-size:13px;margin:6px 0 16px;line-height:1.45">Registra só o peso que quiser. Não precisa completar o treino nem preencher repetição. Linha em branco fica de fora.</p>
       <div class="workout-switch">
         ${state.workouts.map((w) => `
           <button type="button" data-action="loads-pick-workout" data-workout="${w.id}" style="border:1px solid ${draft.workoutId === w.id ? 'var(--accent)' : 'var(--border)'};background:${draft.workoutId === w.id ? 'var(--accent)' : 'transparent'};color:${draft.workoutId === w.id ? 'var(--bg)' : 'var(--text)'}">${w.id}</button>
@@ -480,8 +576,11 @@ function renderEditSession() {
 export function render() {
   const app = document.getElementById('app');
   if (state.activeSession) {
+    persistActiveSession();
     app.innerHTML = renderActiveSession(state, { getLastSetValue, bestEverLoad });
-    bindActiveSessionEvents(app, state, { render, showToast, getLastSetValue, bestEverLoad, exitSession, finishSessionFromSummary, initSetInputs });
+    bindActiveSessionEvents(app, state, {
+      render, showToast, getLastSetValue, bestEverLoad, exitSession, finishSessionFromSummary, initSetInputs, persistActiveSession,
+    });
     return;
   }
 
@@ -558,12 +657,14 @@ function renderHoje() {
     <div style="padding:26px 20px 4px">
       <div style="font-size:11px;letter-spacing:1.5px;color:var(--accent);font-weight:700;text-transform:uppercase">Olá, ${escapeHtml(PROTOCOL_INFO.aluna)}</div>
       <h1 class="font-head" style="font-size:26px;margin:4px 0 0">Pronta pra treinar?</h1>
-      <p style="color:var(--muted);font-size:13px;margin:8px 0 0">Escolhe o treino ou só anota as cargas.</p>
+      <p style="color:var(--muted);font-size:13px;margin:8px 0 0">Escolhe um treino A, B ou C, ou um da planilha DG.</p>
     </div>
 
     <div style="padding:16px 20px 0">
-      ${state.workouts.map((w) => renderWorkoutLauncher(w, suggestedId)).join('')}
+      ${renderResumeCard()}
+      ${renderWorkoutGroups(suggestedId)}
       <button type="button" class="btn-ghost" data-action="open-loads" data-workout="${suggestedId}" style="border-color:var(--accent);color:var(--accent);margin-top:4px">Anotar cargas sem fazer o treino</button>
+      ${renderCycleCard()}
     </div>
 
     <div style="padding:14px 20px 4px">
@@ -590,8 +691,79 @@ function renderHoje() {
   `;
 }
 
+function renderResumeCard() {
+  const saved = loadActiveSession();
+  if (!saved) return '';
+  const workout = state.workouts.find((w) => w.id === saved.workoutId);
+  if (!workout) return '';
+  const ex = workout.exercises[Number(saved.exIdx)] || workout.exercises[0];
+  const sets = Object.values(saved.loggedSets || {}).reduce((n, arr) => n + (Array.isArray(arr) ? arr.length : 0), 0);
+  const where = saved.phase === 'summary'
+    ? 'Falta salvar o resumo'
+    : `${ex ? ex.name : 'Exercício'} · ${sets === 1 ? '1 série anotada' : `${sets} séries anotadas`}`;
+  return `
+    <div class="card card-raised" style="margin-bottom:12px;box-shadow:inset 3px 0 0 var(--accent)">
+      <div style="font-size:11px;letter-spacing:1px;color:var(--accent);font-weight:800;text-transform:uppercase">Treino em andamento</div>
+      <div style="font-weight:700;font-size:15px;margin-top:4px">${escapeHtml(workout.name)} · ${escapeHtml(workout.focus)}</div>
+      <div style="color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.4">${escapeHtml(where)}</div>
+      <button type="button" class="btn-primary" data-action="resume-session" style="margin-top:12px">Continuar treino</button>
+      <div style="color:var(--faint);font-size:11.5px;margin-top:8px;line-height:1.4">Começar outro treino substitui este rascunho.</div>
+    </div>
+  `;
+}
+
+function renderCycleCard() {
+  return `
+    <div class="card" style="margin-top:14px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--accent);text-transform:uppercase">Planilha DG · 4 semanas</div>
+      ${CYCLE_WEEKS.map((w) => `
+        <div style="margin-top:10px">
+          <div style="font-size:12.5px;font-weight:700">${escapeHtml(w.label)}</div>
+          <div style="font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:2px">${escapeHtml(w.value)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function splitWorkoutGroups() {
+  const classicIds = new Set(['A', 'B', 'C']);
+  const dgIds = new Set(['1', '2', '3', '4']);
+  const classic = [];
+  const dg = [];
+  const other = [];
+  state.workouts.forEach((w) => {
+    if (classicIds.has(w.id)) classic.push(w);
+    else if (dgIds.has(w.id)) dg.push(w);
+    else other.push(w);
+  });
+  return { classic, dg, other };
+}
+
+function renderGroupHeading(title, subtitle) {
+  return `
+    <div style="margin:14px 0 8px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--accent);text-transform:uppercase">${escapeHtml(title)}</div>
+      ${subtitle ? `<div style="color:var(--muted);font-size:12.5px;line-height:1.4;margin-top:3px">${escapeHtml(subtitle)}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderWorkoutGroups(suggestedId) {
+  const { classic, dg, other } = splitWorkoutGroups();
+  return `
+    ${renderGroupHeading('Treinos A, B e C', 'O plano da Déka, com os vídeos de antes.')}
+    ${classic.map((w) => renderWorkoutLauncher(w, suggestedId)).join('')}
+    ${other.length ? `${renderGroupHeading('Outros treinos', '')}${other.map((w) => renderWorkoutLauncher(w, suggestedId)).join('')}` : ''}
+    ${renderGroupHeading('Planilha DG', 'Treinos 1 a 4. Toque em Começar no que for fazer hoje.')}
+    ${dg.map((w) => renderWorkoutLauncher(w, suggestedId)).join('')}
+  `;
+}
+
 function renderWorkoutLauncher(w, suggestedId) {
   const suggested = w.id === suggestedId;
+  const saved = loadActiveSession();
+  const resumeThis = !!(saved && saved.workoutId === w.id);
   return `
     <div class="card" style="margin-bottom:10px;${suggested ? 'box-shadow:inset 0 0 0 1.5px var(--accent)' : ''}">
       <div style="display:flex;align-items:center;gap:12px">
@@ -604,7 +776,7 @@ function renderWorkoutLauncher(w, suggestedId) {
           ${suggested ? `<div style="color:var(--accent);font-size:11px;font-weight:800;margin-top:3px;letter-spacing:0.4px">SUGESTÃO</div>` : ''}
         </div>
       </div>
-      <button type="button" class="btn-primary" data-action="start-session" data-workout="${w.id}" style="margin-top:12px;padding:13px 0">Começar</button>
+      <button type="button" class="btn-primary" data-action="${resumeThis ? 'resume-session' : 'start-session'}" data-workout="${w.id}" style="margin-top:12px;padding:13px 0">${resumeThis ? 'Continuar' : 'Começar'}</button>
     </div>
   `;
 }
@@ -614,22 +786,32 @@ function renderExercicios() {
   return `
     <div style="padding:22px 20px">
       <h2 class="font-head" style="font-size:24px;margin:0 0 4px">Exercícios</h2>
-      <p style="color:var(--muted);font-size:13px;margin:0 0 18px">Consulte séries, adicione vídeos e observações.</p>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${state.workouts.map((w) => `
-          <button class="card" data-action="open-browse" data-workout="${w.id}" style="display:flex;align-items:center;gap:14px;width:100%;border:none;text-align:left">
-            <div class="font-head" style="width:44px;height:44px;border-radius:50%;background:var(--bg);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <span style="font-size:18px;color:var(--accent)">${escapeHtml(w.id)}</span>
-            </div>
-            <div style="flex:1">
-              <div style="font-weight:700;font-size:14.5px">${escapeHtml(w.focus)}</div>
-              <div style="color:var(--muted);font-size:12px;margin-top:2px">${w.exercises.length} exercícios</div>
-            </div>
-            <span style="color:var(--faint)">${icon('chevronRight', 18)}</span>
-          </button>
-        `).join('')}
-      </div>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 6px">A, B e C continuam aqui. A planilha DG está em seguida.</p>
+      ${renderExerciseGroups()}
     </div>
+  `;
+}
+
+function renderExerciseGroups() {
+  const { classic, dg, other } = splitWorkoutGroups();
+  const card = (w) => `
+    <button class="card" data-action="open-browse" data-workout="${w.id}" style="display:flex;align-items:center;gap:14px;width:100%;border:none;text-align:left">
+      <div class="font-head" style="width:44px;height:44px;border-radius:50%;background:var(--bg);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <span style="font-size:18px;color:var(--accent)">${escapeHtml(w.id)}</span>
+      </div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14.5px">${escapeHtml(w.focus)}</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:2px">${escapeHtml(w.name)} · ${w.exercises.length} exercícios</div>
+      </div>
+      <span style="color:var(--faint)">${icon('chevronRight', 18)}</span>
+    </button>
+  `;
+  return `
+    ${renderGroupHeading('Treinos A, B e C', '')}
+    <div style="display:flex;flex-direction:column;gap:10px">${classic.map(card).join('')}</div>
+    ${other.length ? `${renderGroupHeading('Outros treinos', '')}<div style="display:flex;flex-direction:column;gap:10px">${other.map(card).join('')}</div>` : ''}
+    ${renderGroupHeading('Planilha DG', '')}
+    <div style="display:flex;flex-direction:column;gap:10px">${dg.map(card).join('')}</div>
   `;
 }
 
@@ -721,7 +903,7 @@ function skippedLine(session) {
 
 function undoneExercises(session) {
   if (session.status === 'loads' || session.status === 'skipped') return [];
-  const workout = state.workouts.find((w) => w.id === session.workoutId);
+  const workout = workoutFromAnywhere(session.workoutId);
   if (!workout) return [];
   return workout.exercises.filter((ex) => {
     const has = (session.sets?.[ex.id] || []).length > 0;
@@ -858,7 +1040,10 @@ function renderPerfil() {
 
       ${renderBackupSection()}
 
-      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Lembretes da Déka</div>
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Planilha DG · 4 semanas</div>
+      ${renderCycleCard()}
+
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px">Lembretes da Déka</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${TIPS.map((t) => `
           <div class="card">
@@ -1176,6 +1361,8 @@ function handleAction(action, ds) {
       state.browseState.editingId = null; render(); break;
     case 'start-session':
       startSession(ds.workout); break;
+    case 'resume-session':
+      resumeActiveSession(); break;
     case 'open-loads':
       openLoadsLogger(ds.workout); break;
     case 'close-loads':
@@ -1286,5 +1473,13 @@ function handleAction(action, ds) {
     default: break;
   }
 }
+
+window.addEventListener('pagehide', persistActiveSession);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') persistActiveSession();
+});
+
+const savedOnOpen = loadActiveSession();
+if (savedOnOpen && !state.workouts.some((w) => w.id === savedOnOpen.workoutId)) clearActiveSession();
 
 render();

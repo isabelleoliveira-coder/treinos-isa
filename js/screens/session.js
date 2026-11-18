@@ -1,5 +1,5 @@
 import { icon } from '../icons.js';
-import { extractYouTubeId, fmtTime, bestSetLoad, escapeHtml, formatSetLoad } from '../utils.js';
+import { extractYouTubeId, bestSetLoad, escapeHtml, formatSetLoad } from '../utils.js';
 
 const PROGRESS_LABEL = {
   done: 'Feito',
@@ -43,7 +43,6 @@ export function renderActiveSession(state, helpers) {
 
   if (s.phase === 'summary') return renderSummary(state, workout, helpers);
   if (s.phase === 'skip-offer') return renderSkipOffer(state, workout);
-  if (s.phase === 'rest') return renderRest(state, workout, ex);
   return renderExercisePhase(state, workout, ex, helpers);
 }
 
@@ -165,46 +164,6 @@ function renderExercisePhase(state, workout, ex, helpers) {
       </div>
 
       ${s.confirmExit ? renderExitSheet() : ''}
-      ${s.exerciseListOpen ? renderExerciseListSheet(state, workout) : ''}
-    </div>
-  `;
-}
-
-function renderRest(state, workout, ex) {
-  const s = state.activeSession;
-  const pct = s.restTotal ? ((s.restTotal - s.restRemaining) / s.restTotal) * 100 : 100;
-  const doneCount = (s.loggedSets[ex.id] || []).length;
-  const nextIsNewExercise = doneCount >= ex.setsCount;
-  let nextLabel = 'Próxima série';
-  if (nextIsNewExercise) {
-    const nextIdx = nextExerciseIndex(workout, s, false);
-    nextLabel = nextIdx == null ? 'Finalizar treino' : `Próximo: ${workout.exercises[nextIdx].name}`;
-  }
-  const circumference = 2 * Math.PI * 98;
-
-  return `
-    <div style="background:var(--bg);min-height:100vh;color:var(--text);max-width:480px;margin:0 auto;display:flex;flex-direction:column">
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px">
-        <div style="font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:18px">Descanso</div>
-        <div style="position:relative;width:220px;height:220px;display:flex;align-items:center;justify-content:center">
-          <svg class="rest-ring" width="220" height="220" style="position:absolute;transform:rotate(-90deg)">
-            <circle cx="110" cy="110" r="98" fill="none" stroke="var(--border)" stroke-width="10"/>
-            <circle cx="110" cy="110" r="98" fill="none" stroke="${s.restReady ? 'var(--accent)' : 'var(--accent-dim)'}" stroke-width="10"
-              stroke-dasharray="${circumference}" stroke-dashoffset="${circumference * (1 - pct / 100)}" stroke-linecap="round"/>
-          </svg>
-          <div class="font-head" style="font-size:52px;color:${s.restReady ? 'var(--accent)' : 'var(--text)'}">${fmtTime(s.restRemaining)}</div>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:26px">
-          <button class="btn-ghost" data-sact="rest-adjust" data-dir="-1" style="width:auto;padding:10px 16px;display:flex;align-items:center;gap:4px">${icon('minus', 14)} 15s</button>
-          <button class="btn-ghost" data-sact="rest-pause" style="width:auto;padding:10px 16px;display:flex;align-items:center;gap:6px">${icon(s.restPaused ? 'play' : 'pause', 14)} ${s.restPaused ? 'Retomar' : 'Pausar'}</button>
-          <button class="btn-ghost" data-sact="rest-adjust" data-dir="1" style="width:auto;padding:10px 16px;display:flex;align-items:center;gap:4px">${icon('plus', 14)} 15s</button>
-        </div>
-      </div>
-      <div style="padding:0 24px 28px;display:flex;flex-direction:column;gap:10px">
-        <button class="btn-primary" data-sact="continue-after-rest" style="opacity:${s.restReady ? 1 : 0.55}">${s.restReady ? icon('check', 18) : ''} ${escapeHtml(nextLabel)}</button>
-        ${!s.restReady ? `<button data-sact="continue-after-rest" style="background:none;border:none;color:var(--muted);font-size:12.5px;font-weight:600;padding:4px">Pular descanso</button>` : ''}
-        <button type="button" class="btn-ghost" data-sact="open-exercise-list">Ver exercícios</button>
-      </div>
       ${s.exerciseListOpen ? renderExerciseListSheet(state, workout) : ''}
     </div>
   `;
@@ -349,9 +308,13 @@ export function bindActiveSessionEvents(app, state, ctx) {
       confirmBtn.disabled = empty;
       confirmBtn.style.opacity = empty ? '0.5' : '1';
     }
+    ctx.persistActiveSession();
   });
   const repsInput = document.getElementById('input-reps');
-  if (repsInput) repsInput.addEventListener('input', (e) => { s.reps = e.target.value; });
+  if (repsInput) repsInput.addEventListener('input', (e) => {
+    s.reps = e.target.value;
+    ctx.persistActiveSession();
+  });
 
   app.querySelectorAll('[data-sact]').forEach((el) => {
     el.addEventListener('click', (e) => {
@@ -390,15 +353,6 @@ export function bindActiveSessionEvents(app, state, ctx) {
 
       case 'confirm-set': confirmSet(); break;
 
-      case 'rest-adjust': {
-        const dir = Number(ds.dir);
-        s.restRemaining = Math.max(0, s.restRemaining + dir * 15);
-        ctx.render();
-        break;
-      }
-      case 'rest-pause': s.restPaused = !s.restPaused; startOrStopTimer(); ctx.render(); break;
-      case 'continue-after-rest': continueAfterRest(); break;
-
       case 'open-exercise-list': s.exerciseListOpen = true; s.confirmExit = false; ctx.render(); break;
       case 'close-exercise-list': s.exerciseListOpen = false; ctx.render(); break;
       case 'goto-ex': goToExercise(Number(ds.idx)); break;
@@ -410,7 +364,6 @@ export function bindActiveSessionEvents(app, state, ctx) {
         break;
       }
       case 'finish-now': {
-        if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
         goToSummaryOrOffer();
         break;
       }
@@ -446,7 +399,6 @@ export function bindActiveSessionEvents(app, state, ctx) {
         s.confirmExit = false;
         s.forceCompleted = true;
         s.phase = 'summary';
-        if (s.timerHandle) clearInterval(s.timerHandle);
         ctx.render();
         break;
       case 'exit-save': ctx.exitSession(true); break;
@@ -464,7 +416,6 @@ export function bindActiveSessionEvents(app, state, ctx) {
       ctx.render();
       return;
     }
-    if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
     s.exIdx = idx;
     s.phase = 'exercise';
     s.editingIdx = null;
@@ -476,7 +427,6 @@ export function bindActiveSessionEvents(app, state, ctx) {
   }
 
   function goToSummaryOrOffer() {
-    if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
     s.exerciseListOpen = false;
     s.confirmExit = false;
     if (skippedExercises(workout, s).length && !s.skipOfferDismissed) {
@@ -495,7 +445,6 @@ export function bindActiveSessionEvents(app, state, ctx) {
       s.skippedIds = s.skippedIds || [];
       if (!s.skippedIds.includes(ex.id)) s.skippedIds = [...s.skippedIds, ex.id];
     }
-    if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
     const next = nextExerciseIndex(workout, s, false);
     if (next == null) {
       goToSummaryOrOffer();
@@ -532,58 +481,20 @@ export function bindActiveSessionEvents(app, state, ctx) {
 
     const finishedExercise = arr.length >= ex.setsCount;
     if (!finishedExercise) {
-      openRest(Math.min(ex.restSeconds, 30));
-    } else if (nextExerciseIndex(workout, s, false) != null) {
-      openRest(ex.restSeconds);
-    } else {
-      goToSummaryOrOffer();
-    }
-  }
-
-  function openRest(seconds) {
-    s.restRemaining = seconds;
-    s.restTotal = seconds;
-    s.restPaused = false;
-    s.restReady = false;
-    s.phase = 'rest';
-    ctx.render();
-    startOrStopTimer();
-  }
-
-  function startOrStopTimer() {
-    if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
-    if (s.phase !== 'rest' || s.restPaused) return;
-    s.timerHandle = setInterval(() => {
-      if (s.restRemaining <= 1) {
-        clearInterval(s.timerHandle);
-        s.timerHandle = null;
-        s.restRemaining = 0;
-        s.restReady = true;
-      } else {
-        s.restRemaining -= 1;
-      }
+      s.phase = 'exercise';
       ctx.render();
-    }, 1000);
-  }
-
-  function continueAfterRest() {
-    if (s.timerHandle) { clearInterval(s.timerHandle); s.timerHandle = null; }
-    const finishedExercise = (s.loggedSets[ex.id] || []).length >= ex.setsCount;
-    if (finishedExercise) {
-      const next = nextExerciseIndex(workout, s, false);
-      if (next == null) {
-        goToSummaryOrOffer();
-        return;
-      }
-      s.exIdx = next;
-      ctx.initSetInputs(workout.exercises[next]);
+      return;
     }
+    const next = nextExerciseIndex(workout, s, false);
+    if (next == null) {
+      goToSummaryOrOffer();
+      return;
+    }
+    s.exIdx = next;
     s.phase = 'exercise';
+    s.editingIdx = null;
+    s.videoOpen = false;
+    ctx.initSetInputs(workout.exercises[next]);
     ctx.render();
-  }
-
-  // inicia o timer se acabamos de entrar na fase de descanso (após render inicial)
-  if (s.phase === 'rest' && !s.timerHandle && !s.restPaused && s.restRemaining > 0) {
-    startOrStopTimer();
   }
 }

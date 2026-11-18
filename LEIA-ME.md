@@ -41,8 +41,8 @@ Esse link é o seu app publicado. Guarde ele.
 
 Na primeira vez que você abrir o link (com internet), o app baixa e guarda
 tudo no celular (HTML, CSS, JS, ícones, sua foto). Depois disso, ele abre e
-funciona **mesmo sem internet nenhuma** — registrar série, timer de descanso,
-histórico, cargas, trocar tema, tudo funciona offline.
+funciona **mesmo sem internet nenhuma** — registrar série, histórico, cargas,
+trocar tema, tudo funciona offline.
 
 A única coisa que sempre vai precisar de internet é **assistir aos vídeos do
 YouTube** dentro do app — isso é uma limitação do próprio YouTube, não tem
@@ -55,6 +55,11 @@ Tudo fica salvo no `localStorage` do navegador/app nesse aparelho específico
 — não é uma nuvem, não sincroniza sozinho entre celular e computador. Se um
 dia você trocar de celular, vai começar com o histórico zerado nesse app
 (diferente da versão que roda dentro do Claude, que fica na sua conta).
+
+Se o app fechar no meio de um treino, as séries, a carga e as repetições que
+você já anotou continuam neste celular. Ao abrir de novo, a tela Hoje mostra
+**Continuar treino** e volta no mesmo exercício. Quando o treino é salvo no
+histórico (ou você sai sem guardar), esse rascunho some.
 
 Dá para guardar uma cópia: em Perfil, toque em **Exportar backup** e salve o
 arquivo nos Arquivos, no iCloud, ou envie para você mesma. **Importar backup**

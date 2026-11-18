@@ -1,10 +1,13 @@
-import { DEFAULT_WORKOUTS } from '../data/workouts.js';
+import { CLASSIC_WORKOUTS, DEFAULT_WORKOUTS, DG_WORKOUTS, WORKOUT_PLAN_ID } from '../data/workouts.js';
 
 const KEYS = {
   workouts: 'treinosIsa.workouts',
   sessions: 'treinosIsa.sessions',
   theme: 'treinosIsa.theme',
   scheduleLog: 'treinosIsa.scheduleLog',
+  workoutPlanId: 'treinosIsa.workoutPlanId',
+  archivedWorkouts: 'treinosIsa.archivedWorkouts',
+  activeSession: 'treinosIsa.activeSession',
 };
 
 function safeGet(key, fallback) {
@@ -54,8 +57,112 @@ function normalizeSession(s) {
   return next;
 }
 
+// Uma versão anterior deste app chegou a trocar A/B/C pela planilha.
+// Se o celular ficou nesse estado, as fichas arquivadas voltam a ficar ativas.
+const REPLACED_PLAN_ID = 'dg-planilha-2026-11';
+const CLASSIC_IDS = ['A', 'B', 'C'];
+const DG_IDS = ['1', '2', '3', '4'];
+
+function validWorkouts(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((w) => w && typeof w.id === 'string' && Array.isArray(w.exercises));
+}
+
+// Se a ficha da planilha já foi salva sem o link, completa o vídeo vazio
+// com o da planilha. Um link que a Isa colocou no celular fica como está.
+function fillBlankVideos(storedW, fileW) {
+  if (!storedW) return fileW;
+  if (!fileW) return storedW;
+  const fileById = new Map((fileW.exercises || []).map((e) => [e.id, e]));
+  let changed = false;
+  const exercises = storedW.exercises.map((e) => {
+    const fromFile = fileById.get(e.id);
+    if (fromFile && !String(e.videoUrl || '').trim() && fromFile.videoUrl) {
+      changed = true;
+      return { ...e, videoUrl: fromFile.videoUrl };
+    }
+    return e;
+  });
+  return changed ? { ...storedW, exercises } : storedW;
+}
+
+// As fichas já salvas no aparelho ganham. O arquivo só completa o que falta
+// (A/B/C se sumiram, e os Treinos 1 a 4 da planilha).
+export function combineWorkoutPlans(storedList, recoveredList = []) {
+  const byId = new Map();
+  validWorkouts(storedList).forEach((w) => byId.set(w.id, w));
+  validWorkouts(recoveredList).forEach((w) => {
+    if (!byId.has(w.id)) byId.set(w.id, w);
+  });
+  const pick = (id, fallback) => byId.get(id) || fallback.find((w) => w.id === id);
+  const classic = CLASSIC_IDS.map((id) => pick(id, CLASSIC_WORKOUTS)).filter(Boolean);
+  const dg = DG_IDS.map((id) => fillBlankVideos(byId.get(id), DG_WORKOUTS.find((w) => w.id === id))).filter(Boolean);
+  const known = new Set([...CLASSIC_IDS, ...DG_IDS]);
+  const extras = [];
+  byId.forEach((w, id) => {
+    if (!known.has(id)) extras.push(w);
+  });
+  return [...classic, ...extras, ...dg];
+}
+
+// O app mostra os dois planos juntos. Nada que já está no celular é arquivado
+// nem substituído: A, B e C salvos continuam, e os Treinos 1 a 4 entram junto.
 export function loadWorkouts() {
-  return safeGet(KEYS.workouts, DEFAULT_WORKOUTS);
+  try {
+    const storedPlan = JSON.parse(localStorage.getItem(KEYS.workoutPlanId) || 'null');
+    let stored = safeGet(KEYS.workouts, null);
+    let recovered = [];
+    if (storedPlan === REPLACED_PLAN_ID) {
+      recovered = loadArchivedWorkoutLists().flat();
+      const phone = new Map(validWorkouts(stored).map((w) => [w.id, w]));
+      validWorkouts(recovered).forEach((w) => phone.set(w.id, w));
+      stored = [...phone.values()];
+    }
+    if (!validWorkouts(stored).length && !validWorkouts(recovered).length) {
+      safeSet(KEYS.workoutPlanId, WORKOUT_PLAN_ID);
+      return DEFAULT_WORKOUTS;
+    }
+    const merged = combineWorkoutPlans(stored, recovered);
+    const storedValid = validWorkouts(stored);
+    const same = storedPlan === WORKOUT_PLAN_ID
+      && storedValid.length === merged.length
+      && storedValid.every((w, i) => w === merged[i]);
+    if (!same) {
+      safeSet(KEYS.workouts, merged);
+      safeSet(KEYS.workoutPlanId, WORKOUT_PLAN_ID);
+    }
+    return merged;
+  } catch {
+    return DEFAULT_WORKOUTS;
+  }
+}
+
+export function loadArchivedWorkoutLists() {
+  const raw = safeGet(KEYS.archivedWorkouts, []);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => (entry && Array.isArray(entry.workouts) ? entry.workouts : null))
+    .filter(Boolean);
+}
+
+export function loadActiveSession() {
+  const raw = safeGet(KEYS.activeSession, null);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (typeof raw.workoutId !== 'string' || !raw.workoutId) return null;
+  return raw;
+}
+
+export function saveActiveSession(session) {
+  return safeSet(KEYS.activeSession, session);
+}
+
+export function clearActiveSession() {
+  try {
+    localStorage.removeItem(KEYS.activeSession);
+    return true;
+  } catch {
+    return false;
+  }
 }
 export function saveWorkouts(workouts) {
   return safeSet(KEYS.workouts, workouts);

@@ -208,8 +208,6 @@ nav.bottom-nav {
 }
 .set-chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
-svg.rest-ring circle { transition: stroke-dashoffset 1s linear; }
-
 input[type="text"], input[type="number"], input[type="date"], textarea {
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
   color: var(--text); font-size: 14px; width: 100%;

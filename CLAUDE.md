@@ -22,14 +22,17 @@ estado (função `render()` em `js/app.js`), sem virtual DOM.
 - `service-worker.js` — cache-first do app shell para uso offline; requests
   cross-origin (ex: player do YouTube) vão direto pra rede.
 - `js/app.js` — estado global, lógica de tela e renderização principal.
-- `js/screens/session.js` — tela da sessão de treino ativa (série, timer de
-  descanso, registro de carga/reps).
+- `js/screens/session.js` — tela da sessão de treino ativa (série e registro
+  de carga/reps). O tempo de descanso da planilha aparece só como observação
+  do exercício; não há timer entre as séries.
 - `js/storage.js` — toda leitura/escrita em `localStorage`, incluindo
   migração de sessões salvas em formato antigo.
 - `js/icons.js` — ícones SVG inline usados na UI.
 - `js/utils.js` — helpers (datas, parsing de YouTube, formatação, etc.).
 - `data/workouts.js` — protocolo de musculação (`PROTOCOL_INFO`, treinos
-  padrão, dicas, mensagens motivacionais).
+  A/B/C e a planilha DG dos Treinos 1 a 4, os dois ativos ao mesmo tempo),
+  dicas, mensagens motivacionais. Fichas já salvas no celular continuam;
+  os Treinos 1 a 4 são acrescentados.
 - `data/schedule.js` — programação semanal de sessões (Cross/HYROX/corrida).
 - `data/avatar.js` — URL do avatar exibido na tela inicial.
 - `assets/` — ícones do PWA.
