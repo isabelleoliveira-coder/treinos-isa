@@ -1,10 +1,13 @@
-import { DEFAULT_WORKOUTS } from '../data/workouts.js';
+import { DEFAULT_WORKOUTS, WORKOUT_PLAN_ID } from '../data/workouts.js';
 
 const KEYS = {
   workouts: 'treinosIsa.workouts',
   sessions: 'treinosIsa.sessions',
   theme: 'treinosIsa.theme',
   scheduleLog: 'treinosIsa.scheduleLog',
+  workoutPlanId: 'treinosIsa.workoutPlanId',
+  archivedWorkouts: 'treinosIsa.archivedWorkouts',
+  activeSession: 'treinosIsa.activeSession',
 };
 
 function safeGet(key, fallback) {
@@ -54,8 +57,58 @@ function normalizeSession(s) {
   return next;
 }
 
+// O app tem um plano atual só. Quando a planilha muda, as fichas que já
+// estavam salvas neste celular vão para o arquivo (não se apagam) e o plano
+// novo entra. O histórico de sessões não é mexido.
 export function loadWorkouts() {
+  try {
+    const storedPlan = JSON.parse(localStorage.getItem(KEYS.workoutPlanId) || 'null');
+    if (storedPlan === WORKOUT_PLAN_ID) return safeGet(KEYS.workouts, DEFAULT_WORKOUTS);
+    const stored = safeGet(KEYS.workouts, null);
+    if (Array.isArray(stored) && stored.length) {
+      const archive = safeGet(KEYS.archivedWorkouts, []);
+      const list = Array.isArray(archive) ? archive : [];
+      list.push({
+        planId: typeof storedPlan === 'string' ? storedPlan : null,
+        archivedAt: new Date().toISOString(),
+        workouts: stored,
+      });
+      safeSet(KEYS.archivedWorkouts, list);
+      localStorage.removeItem(KEYS.workouts);
+    }
+    safeSet(KEYS.workoutPlanId, WORKOUT_PLAN_ID);
+  } catch {
+    // Sem localStorage (por exemplo num teste) usa o plano que veio no arquivo.
+  }
   return safeGet(KEYS.workouts, DEFAULT_WORKOUTS);
+}
+
+export function loadArchivedWorkoutLists() {
+  const raw = safeGet(KEYS.archivedWorkouts, []);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => (entry && Array.isArray(entry.workouts) ? entry.workouts : null))
+    .filter(Boolean);
+}
+
+export function loadActiveSession() {
+  const raw = safeGet(KEYS.activeSession, null);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (typeof raw.workoutId !== 'string' || !raw.workoutId) return null;
+  return raw;
+}
+
+export function saveActiveSession(session) {
+  return safeSet(KEYS.activeSession, session);
+}
+
+export function clearActiveSession() {
+  try {
+    localStorage.removeItem(KEYS.activeSession);
+    return true;
+  } catch {
+    return false;
+  }
 }
 export function saveWorkouts(workouts) {
   return safeSet(KEYS.workouts, workouts);

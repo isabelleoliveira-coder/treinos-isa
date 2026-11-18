@@ -1,9 +1,13 @@
 export const PROTOCOL_INFO = {
   aluna: 'Isa',
   inicio: '24/08/2026',
-  objetivo: 'Fortalecimento e preparação para corrida · Hipertrofia isolada de membros inferiores',
+  objetivo: 'Planilha DG · Treinos 1 a 4, com ativação e progressão de 4 semanas',
   personal: 'Déka Lagranha',
 };
+
+// Identifica o plano que o app trata como atual. Se o celular ainda tiver
+// fichas de um plano anterior, elas vão para o arquivo e este entra no lugar.
+export const WORKOUT_PLAN_ID = 'dg-planilha-2026-11';
 
 export const TIPS = [
   { label: 'Aquecimento', value: '5–10 min para preparar e ativar os músculos' },
@@ -12,7 +16,126 @@ export const TIPS = [
   { label: 'Cargas', value: 'Aumentar sempre que possível, quando o exercício ficar fácil' },
 ];
 
+// Textos da planilha (aba DG), abaixo dos quatro treinos. Valem para o ciclo
+// inteiro — não são exercícios de um treino só.
+export const CYCLE_WEEKS = [
+  {
+    label: 'Semana 1 · Aprendizado',
+    value: 'DESAFIO: Familiarização com a planilha e buscar perfeição na execução dos exercícios. Sempre focar na qualidade de controle de cada movimento.',
+  },
+  {
+    label: 'Semana 2 · Volume muscular',
+    value: "DESAFIO: Aumente a cadência em 1'' a 2'' por repetição. Movimentos mais lentos.",
+  },
+  {
+    label: 'Semana 3 · Carga',
+    value: 'DESAFIO: Torne os movimentos mais dinâmicos, com menos cadência e tente aumentar a carga nos exercícios com sobrepeso.',
+  },
+  {
+    label: 'Semana 4 · Deload',
+    value: 'Reduza o volume (reduza 1 séries por exercício) e foque na técnica. Se possível, aumente para uma carga ainda maior que a semana anterior.',
+  },
+];
+
+const ATIVACAO = 'Ativação';
+const POR_LADO = 'por lado';
+const REST_2 = "Rest 2' entre as séries";
+const SUPERSET_PULL = 'Fazer um exercício seguido do outro e, se precisar, usar superband no primeiro. NÃO USAR GRIP.';
+const REST_PULL = "Rest 1'30'' a 2' entre as séries";
+
+function ex(id, name, scheme, setsCount, repsTarget, note) {
+  return {
+    id, name, scheme, setsCount, repsTarget,
+    restSeconds: 0,
+    note: note || '',
+    videoUrl: '',
+  };
+}
+
+// Planilha DG (aba DG): TREINO 1 a 4. Células que o Excel virou data
+// (8/8, 6/6, 10/10) entram como repetições por lado.
 export const DEFAULT_WORKOUTS = [
+  {
+    id: '1',
+    name: 'Treino 1',
+    focus: 'Ombro, peito e tríceps',
+    subfocus: '',
+    warmup: '',
+    finisher: '',
+    exercises: [
+      ex('t1e1', 'Band External Cuban Rotation', '3x 8/8', 3, '8/8', `${ATIVACAO} · ${POR_LADO}`),
+      ex('t1e2', 'DB Frontal Raises', '3x 8', 3, '8', ATIVACAO),
+      ex('t1e3', 'Elbow Plank Hold', "3x 1'", 3, "1'", ATIVACAO),
+      ex('t1e4', 'DB Bench Press', '5x 8', 5, '8', REST_2),
+      ex('t1e5', 'Seated DB Alt. S. Press', '5x 6/6', 5, '6/6', `${POR_LADO} · ${REST_2}`),
+      ex('t1e6', 'DB Combine Raises (6 frente e 6 lado alt)', '3x 12', 3, '12', REST_2),
+      ex('t1e7', 'Banded Triceps', '3x 12', 3, '12', REST_2),
+    ],
+  },
+  {
+    id: '2',
+    name: 'Treino 2',
+    focus: 'Glúteo, costas e bíceps',
+    subfocus: '',
+    warmup: '',
+    finisher: '',
+    exercises: [
+      ex('t2e1', 'Scap retraction', '3x 10', 3, '10', ATIVACAO),
+      ex('t2e2', 'Single Arm Standing Banded R. Fly', '3x 10/10', 3, '10/10', `${ATIVACAO} · ${POR_LADO}`),
+      ex('t2e3', 'Barbell Hip Thrust', '4x 8', 4, '8', "Rest 1'30'' entre as séries"),
+      ex('t2e4', 'Double DB Step Down', '3x 6/6', 3, '6/6', POR_LADO),
+      ex('t2e5', 'Supine Bent Over Row', '3x 12 a 15', 3, '12 a 15', REST_2),
+      ex('t2e6', 'Biceps Curl', '3x 20', 3, '20', REST_2),
+      ex('t2e7', 'One Arm Ring Row', '3x 8/8', 3, '8/8', POR_LADO),
+    ],
+  },
+  {
+    id: '3',
+    name: 'Treino 3',
+    focus: 'Handstand e empurrar',
+    subfocus: '',
+    warmup: '',
+    finisher: '',
+    exercises: [
+      ex('t3e1', 'Alternate Retraction on the wall', '3x 6/6', 3, '6/6', `${ATIVACAO} · ${POR_LADO}`),
+      ex('t3e2', 'Superband scap retraction', '3x 12', 3, '12', ATIVACAO),
+      ex('t3e3', 'Box Handstand Hold', "3x 30''-40''", 3, "30''-40''", ''),
+      ex('t3e4', 'Wall Facing Handstand Hold', "3x 20''-30''", 3, "20''-30''", ''),
+      ex('t3e5', 'DB Eye Press', '3x 8-12', 3, '8-12', ''),
+      ex('t3e6', 'Incline Push Up', '3x 10-20', 3, '10-20', ''),
+    ],
+  },
+  {
+    id: '4',
+    name: 'Treino 4',
+    focus: 'Puxar, core e pernas',
+    subfocus: '',
+    warmup: '',
+    finisher: '',
+    exercises: [
+      ex('t4e1', 'Banded reverse pull', '3x 10', 3, '10', ATIVACAO),
+      ex('t4e2', 'Bird Dog Hold', "3x 30''/30''", 3, "30''/30''", ATIVACAO),
+      ex('t4e3', 'Pull Up Hold', "4x 10'' a 15''", 4, "10'' a 15''", `${SUPERSET_PULL} ${REST_PULL}`),
+      ex('t4e4', 'Hanging Knee Raise Hold', "4x 10'' a 15''", 4, "10'' a 15''", `${SUPERSET_PULL} ${REST_PULL}`),
+      ex('t4e5', 'Banded Strict Pull Up', "EMOM 12' · 4x 6 a 12", 4, '6 a 12', "EMOM 12'. Minuto 1 de cada ciclo de 3. Min 3: Rest."),
+      ex('t4e6', 'Knee Raises', "EMOM 12' · 4x 6-10", 4, '6-10', "EMOM 12'. Minuto 2, lento. Min 3: Rest."),
+      ex('t4e7', 'Banded Good Morning', '2x 30', 2, '30', ''),
+      ex('t4e8', 'Single DB Bulgarian Split Squat', '4x 8/8', 4, '8/8', POR_LADO),
+    ],
+  },
+];
+
+// Plano anterior da Déka (musculação de inferiores). O app mostra só
+// DEFAULT_WORKOUTS. Isto fica no arquivo para o histórico antigo ainda
+// achar o nome do exercício, e para a ficha não se perder.
+export const ARCHIVED_PROTOCOL_INFO = {
+  aluna: 'Isa',
+  inicio: '24/08/2026',
+  objetivo: 'Fortalecimento e preparação para corrida · Hipertrofia isolada de membros inferiores',
+  personal: 'Déka Lagranha',
+};
+
+export const ARCHIVED_WORKOUTS = [
   {
     id: 'A', name: 'Treino A', focus: 'Quadríceps + Glúteo', subfocus: '',
     warmup: "3' de ativação da musculatura de inferiores", finisher: '',
