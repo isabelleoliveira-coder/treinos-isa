@@ -30,7 +30,9 @@ estado (função `render()` em `js/app.js`), sem virtual DOM.
 - `js/icons.js` — ícones SVG inline usados na UI.
 - `js/utils.js` — helpers (datas, parsing de YouTube, formatação, etc.).
 - `data/workouts.js` — protocolo de musculação (`PROTOCOL_INFO`, treinos
-  padrão, dicas, mensagens motivacionais).
+  A/B/C e a planilha DG dos Treinos 1 a 4, os dois ativos ao mesmo tempo),
+  dicas, mensagens motivacionais. Fichas já salvas no celular continuam;
+  os Treinos 1 a 4 são acrescentados.
 - `data/schedule.js` — programação semanal de sessões (Cross/HYROX/corrida).
 - `data/avatar.js` — URL do avatar exibido na tela inicial.
 - `assets/` — ícones do PWA.

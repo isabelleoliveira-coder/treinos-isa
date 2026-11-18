@@ -1,4 +1,4 @@
-import { DEFAULT_WORKOUTS, WORKOUT_PLAN_ID } from '../data/workouts.js';
+import { CLASSIC_WORKOUTS, DEFAULT_WORKOUTS, DG_WORKOUTS, WORKOUT_PLAN_ID } from '../data/workouts.js';
 
 const KEYS = {
   workouts: 'treinosIsa.workouts',
@@ -57,30 +57,84 @@ function normalizeSession(s) {
   return next;
 }
 
-// O app tem um plano atual só. Quando a planilha muda, as fichas que já
-// estavam salvas neste celular vão para o arquivo (não se apagam) e o plano
-// novo entra. O histórico de sessões não é mexido.
+// Uma versão anterior deste app chegou a trocar A/B/C pela planilha.
+// Se o celular ficou nesse estado, as fichas arquivadas voltam a ficar ativas.
+const REPLACED_PLAN_ID = 'dg-planilha-2026-11';
+const CLASSIC_IDS = ['A', 'B', 'C'];
+const DG_IDS = ['1', '2', '3', '4'];
+
+function validWorkouts(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((w) => w && typeof w.id === 'string' && Array.isArray(w.exercises));
+}
+
+// Se a ficha da planilha já foi salva sem o link, completa o vídeo vazio
+// com o da planilha. Um link que a Isa colocou no celular fica como está.
+function fillBlankVideos(storedW, fileW) {
+  if (!storedW) return fileW;
+  if (!fileW) return storedW;
+  const fileById = new Map((fileW.exercises || []).map((e) => [e.id, e]));
+  let changed = false;
+  const exercises = storedW.exercises.map((e) => {
+    const fromFile = fileById.get(e.id);
+    if (fromFile && !String(e.videoUrl || '').trim() && fromFile.videoUrl) {
+      changed = true;
+      return { ...e, videoUrl: fromFile.videoUrl };
+    }
+    return e;
+  });
+  return changed ? { ...storedW, exercises } : storedW;
+}
+
+// As fichas já salvas no aparelho ganham. O arquivo só completa o que falta
+// (A/B/C se sumiram, e os Treinos 1 a 4 da planilha).
+export function combineWorkoutPlans(storedList, recoveredList = []) {
+  const byId = new Map();
+  validWorkouts(storedList).forEach((w) => byId.set(w.id, w));
+  validWorkouts(recoveredList).forEach((w) => {
+    if (!byId.has(w.id)) byId.set(w.id, w);
+  });
+  const pick = (id, fallback) => byId.get(id) || fallback.find((w) => w.id === id);
+  const classic = CLASSIC_IDS.map((id) => pick(id, CLASSIC_WORKOUTS)).filter(Boolean);
+  const dg = DG_IDS.map((id) => fillBlankVideos(byId.get(id), DG_WORKOUTS.find((w) => w.id === id))).filter(Boolean);
+  const known = new Set([...CLASSIC_IDS, ...DG_IDS]);
+  const extras = [];
+  byId.forEach((w, id) => {
+    if (!known.has(id)) extras.push(w);
+  });
+  return [...classic, ...extras, ...dg];
+}
+
+// O app mostra os dois planos juntos. Nada que já está no celular é arquivado
+// nem substituído: A, B e C salvos continuam, e os Treinos 1 a 4 entram junto.
 export function loadWorkouts() {
   try {
     const storedPlan = JSON.parse(localStorage.getItem(KEYS.workoutPlanId) || 'null');
-    if (storedPlan === WORKOUT_PLAN_ID) return safeGet(KEYS.workouts, DEFAULT_WORKOUTS);
-    const stored = safeGet(KEYS.workouts, null);
-    if (Array.isArray(stored) && stored.length) {
-      const archive = safeGet(KEYS.archivedWorkouts, []);
-      const list = Array.isArray(archive) ? archive : [];
-      list.push({
-        planId: typeof storedPlan === 'string' ? storedPlan : null,
-        archivedAt: new Date().toISOString(),
-        workouts: stored,
-      });
-      safeSet(KEYS.archivedWorkouts, list);
-      localStorage.removeItem(KEYS.workouts);
+    let stored = safeGet(KEYS.workouts, null);
+    let recovered = [];
+    if (storedPlan === REPLACED_PLAN_ID) {
+      recovered = loadArchivedWorkoutLists().flat();
+      const phone = new Map(validWorkouts(stored).map((w) => [w.id, w]));
+      validWorkouts(recovered).forEach((w) => phone.set(w.id, w));
+      stored = [...phone.values()];
     }
-    safeSet(KEYS.workoutPlanId, WORKOUT_PLAN_ID);
+    if (!validWorkouts(stored).length && !validWorkouts(recovered).length) {
+      safeSet(KEYS.workoutPlanId, WORKOUT_PLAN_ID);
+      return DEFAULT_WORKOUTS;
+    }
+    const merged = combineWorkoutPlans(stored, recovered);
+    const storedValid = validWorkouts(stored);
+    const same = storedPlan === WORKOUT_PLAN_ID
+      && storedValid.length === merged.length
+      && storedValid.every((w, i) => w === merged[i]);
+    if (!same) {
+      safeSet(KEYS.workouts, merged);
+      safeSet(KEYS.workoutPlanId, WORKOUT_PLAN_ID);
+    }
+    return merged;
   } catch {
-    // Sem localStorage (por exemplo num teste) usa o plano que veio no arquivo.
+    return DEFAULT_WORKOUTS;
   }
-  return safeGet(KEYS.workouts, DEFAULT_WORKOUTS);
 }
 
 export function loadArchivedWorkoutLists() {

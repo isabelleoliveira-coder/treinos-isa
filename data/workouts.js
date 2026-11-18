@@ -1,13 +1,13 @@
 export const PROTOCOL_INFO = {
   aluna: 'Isa',
   inicio: '24/08/2026',
-  objetivo: 'Planilha DG · Treinos 1 a 4, com ativação e progressão de 4 semanas',
+  objetivo: 'Treinos A, B e C da Déka, e também a planilha DG (Treinos 1 a 4). Os dois ficam na tela Hoje para escolher.',
   personal: 'Déka Lagranha',
 };
 
-// Identifica o plano que o app trata como atual. Se o celular ainda tiver
-// fichas de um plano anterior, elas vão para o arquivo e este entra no lugar.
-export const WORKOUT_PLAN_ID = 'dg-planilha-2026-11';
+// Marca que este celular já recebeu os Treinos 1 a 4 junto com A, B e C.
+// Não troca o plano: as fichas salvas no aparelho continuam ativas.
+export const WORKOUT_PLAN_ID = 'abc-e-dg-2026-11';
 
 export const TIPS = [
   { label: 'Aquecimento', value: '5–10 min para preparar e ativar os músculos' },
@@ -43,18 +43,18 @@ const REST_2 = "Rest 2' entre as séries";
 const SUPERSET_PULL = 'Fazer um exercício seguido do outro e, se precisar, usar superband no primeiro. NÃO USAR GRIP.';
 const REST_PULL = "Rest 1'30'' a 2' entre as séries";
 
-function ex(id, name, scheme, setsCount, repsTarget, note) {
+function ex(id, name, scheme, setsCount, repsTarget, note, videoUrl) {
   return {
     id, name, scheme, setsCount, repsTarget,
     restSeconds: 0,
     note: note || '',
-    videoUrl: '',
+    videoUrl: videoUrl || '',
   };
 }
 
-// Planilha DG (aba DG): TREINO 1 a 4. Células que o Excel virou data
-// (8/8, 6/6, 10/10) entram como repetições por lado.
-export const DEFAULT_WORKOUTS = [
+// Planilha DG (aba DG): TREINO 1 a 4, acrescentados aos treinos A, B e C.
+// Células que o Excel virou data (8/8, 6/6, 10/10) entram como repetições por lado.
+export const DG_WORKOUTS = [
   {
     id: '1',
     name: 'Treino 1',
@@ -63,13 +63,13 @@ export const DEFAULT_WORKOUTS = [
     warmup: '',
     finisher: '',
     exercises: [
-      ex('t1e1', 'Band External Cuban Rotation', '3x 8/8', 3, '8/8', `${ATIVACAO} · ${POR_LADO}`),
-      ex('t1e2', 'DB Frontal Raises', '3x 8', 3, '8', ATIVACAO),
-      ex('t1e3', 'Elbow Plank Hold', "3x 1'", 3, "1'", ATIVACAO),
-      ex('t1e4', 'DB Bench Press', '5x 8', 5, '8', REST_2),
+      ex('t1e1', 'Band External Cuban Rotation', '3x 8/8', 3, '8/8', `${ATIVACAO} · ${POR_LADO}`, 'https://www.youtube.com/watch?v=5ws137dgVzw'),
+      ex('t1e2', 'DB Frontal Raises', '3x 8', 3, '8', ATIVACAO, 'https://www.youtube.com/watch?v=9WBGOxhRkEY'),
+      ex('t1e3', 'Elbow Plank Hold', "3x 1'", 3, "1'", ATIVACAO, 'https://youtu.be/SwHhJZk3x9g'),
+      ex('t1e4', 'DB Bench Press', '5x 8', 5, '8', REST_2, 'https://youtu.be/ooYedAJbH7k'),
       ex('t1e5', 'Seated DB Alt. S. Press', '5x 6/6', 5, '6/6', `${POR_LADO} · ${REST_2}`),
-      ex('t1e6', 'DB Combine Raises (6 frente e 6 lado alt)', '3x 12', 3, '12', REST_2),
-      ex('t1e7', 'Banded Triceps', '3x 12', 3, '12', REST_2),
+      ex('t1e6', 'DB Combine Raises (6 frente e 6 lado alt)', '3x 12', 3, '12', REST_2, 'https://www.youtube.com/watch?v=-FylaRaYCck'),
+      ex('t1e7', 'Banded Triceps', '3x 12', 3, '12', REST_2, 'https://www.youtube.com/watch?v=HXia-KuaBu4'),
     ],
   },
   {
@@ -80,13 +80,13 @@ export const DEFAULT_WORKOUTS = [
     warmup: '',
     finisher: '',
     exercises: [
-      ex('t2e1', 'Scap retraction', '3x 10', 3, '10', ATIVACAO),
-      ex('t2e2', 'Single Arm Standing Banded R. Fly', '3x 10/10', 3, '10/10', `${ATIVACAO} · ${POR_LADO}`),
-      ex('t2e3', 'Barbell Hip Thrust', '4x 8', 4, '8', "Rest 1'30'' entre as séries"),
-      ex('t2e4', 'Double DB Step Down', '3x 6/6', 3, '6/6', POR_LADO),
-      ex('t2e5', 'Supine Bent Over Row', '3x 12 a 15', 3, '12 a 15', REST_2),
-      ex('t2e6', 'Biceps Curl', '3x 20', 3, '20', REST_2),
-      ex('t2e7', 'One Arm Ring Row', '3x 8/8', 3, '8/8', POR_LADO),
+      ex('t2e1', 'Scap retraction', '3x 10', 3, '10', ATIVACAO, 'https://www.youtube.com/watch?v=3_7bhp_dIW0'),
+      ex('t2e2', 'Single Arm Standing Banded R. Fly', '3x 10/10', 3, '10/10', `${ATIVACAO} · ${POR_LADO}`, 'https://www.youtube.com/watch?v=2s35VKmym_s'),
+      ex('t2e3', 'Barbell Hip Thrust', '4x 8', 4, '8', "Rest 1'30'' entre as séries", 'https://www.youtube.com/watch?v=Zp26q4BY5HE'),
+      ex('t2e4', 'Double DB Step Down', '3x 6/6', 3, '6/6', POR_LADO, 'https://www.youtube.com/watch?v=p0g2kKvYu7k'),
+      ex('t2e5', 'Supine Bent Over Row', '3x 12 a 15', 3, '12 a 15', REST_2, 'https://youtu.be/jgoDYjZ49ts'),
+      ex('t2e6', 'Biceps Curl', '3x 20', 3, '20', REST_2, 'https://www.youtube.com/watch?v=LY1V6UbRHFM'),
+      ex('t2e7', 'One Arm Ring Row', '3x 8/8', 3, '8/8', POR_LADO, 'https://www.youtube.com/watch?v=xuXXRJKJ3iQ'),
     ],
   },
   {
@@ -97,12 +97,12 @@ export const DEFAULT_WORKOUTS = [
     warmup: '',
     finisher: '',
     exercises: [
-      ex('t3e1', 'Alternate Retraction on the wall', '3x 6/6', 3, '6/6', `${ATIVACAO} · ${POR_LADO}`),
-      ex('t3e2', 'Superband scap retraction', '3x 12', 3, '12', ATIVACAO),
-      ex('t3e3', 'Box Handstand Hold', "3x 30''-40''", 3, "30''-40''", ''),
-      ex('t3e4', 'Wall Facing Handstand Hold', "3x 20''-30''", 3, "20''-30''", ''),
-      ex('t3e5', 'DB Eye Press', '3x 8-12', 3, '8-12', ''),
-      ex('t3e6', 'Incline Push Up', '3x 10-20', 3, '10-20', ''),
+      ex('t3e1', 'Alternate Retraction on the wall', '3x 6/6', 3, '6/6', `${ATIVACAO} · ${POR_LADO}`, 'https://www.youtube.com/watch?v=Kn-n1ner0sI'),
+      ex('t3e2', 'Superband scap retraction', '3x 12', 3, '12', ATIVACAO, 'https://www.youtube.com/watch?v=idnj7bbZ3F8'),
+      ex('t3e3', 'Box Handstand Hold', "3x 30''-40''", 3, "30''-40''", '', 'https://youtu.be/J9nHXH3wyss'),
+      ex('t3e4', 'Wall Facing Handstand Hold', "3x 20''-30''", 3, "20''-30''", '', 'https://www.youtube.com/watch?v=yHuLx1J9orw'),
+      ex('t3e5', 'DB Eye Press', '3x 8-12', 3, '8-12', '', 'https://www.youtube.com/shorts/hi6rrOUeW_M'),
+      ex('t3e6', 'Incline Push Up', '3x 10-20', 3, '10-20', '', 'https://www.youtube.com/watch?v=0CcVzNxrcdc'),
     ],
   },
   {
@@ -113,29 +113,20 @@ export const DEFAULT_WORKOUTS = [
     warmup: '',
     finisher: '',
     exercises: [
-      ex('t4e1', 'Banded reverse pull', '3x 10', 3, '10', ATIVACAO),
-      ex('t4e2', 'Bird Dog Hold', "3x 30''/30''", 3, "30''/30''", ATIVACAO),
-      ex('t4e3', 'Pull Up Hold', "4x 10'' a 15''", 4, "10'' a 15''", `${SUPERSET_PULL} ${REST_PULL}`),
-      ex('t4e4', 'Hanging Knee Raise Hold', "4x 10'' a 15''", 4, "10'' a 15''", `${SUPERSET_PULL} ${REST_PULL}`),
-      ex('t4e5', 'Banded Strict Pull Up', "EMOM 12' · 4x 6 a 12", 4, '6 a 12', "EMOM 12'. Minuto 1 de cada ciclo de 3. Min 3: Rest."),
-      ex('t4e6', 'Knee Raises', "EMOM 12' · 4x 6-10", 4, '6-10', "EMOM 12'. Minuto 2, lento. Min 3: Rest."),
-      ex('t4e7', 'Banded Good Morning', '2x 30', 2, '30', ''),
-      ex('t4e8', 'Single DB Bulgarian Split Squat', '4x 8/8', 4, '8/8', POR_LADO),
+      ex('t4e1', 'Banded reverse pull', '3x 10', 3, '10', ATIVACAO, 'https://youtu.be/tGqBPFMperk'),
+      ex('t4e2', 'Bird Dog Hold', "3x 30''/30''", 3, "30''/30''", ATIVACAO, 'https://youtu.be/9N-3oDRuK8o'),
+      ex('t4e3', 'Pull Up Hold', "4x 10'' a 15''", 4, "10'' a 15''", `${SUPERSET_PULL} ${REST_PULL}`, 'https://youtu.be/C6nULzPl4BM'),
+      ex('t4e4', 'Hanging Knee Raise Hold', "4x 10'' a 15''", 4, "10'' a 15''", `${SUPERSET_PULL} ${REST_PULL}`, 'https://www.youtube.com/watch?v=bmGG1_25uDc'),
+      ex('t4e5', 'Banded Strict Pull Up', "EMOM 12' · 4x 6 a 12", 4, '6 a 12', "EMOM 12'. Minuto 1 de cada ciclo de 3. Min 3: Rest.", 'https://youtu.be/4xnePwVXEf4'),
+      ex('t4e6', 'Knee Raises', "EMOM 12' · 4x 6-10", 4, '6-10', "EMOM 12'. Minuto 2, lento. Min 3: Rest.", 'https://www.youtube.com/watch?v=ubZZS94K4uw'),
+      ex('t4e7', 'Banded Good Morning', '2x 30', 2, '30', '', 'https://www.youtube.com/watch?v=CTRaCzE8pWU'),
+      ex('t4e8', 'Single DB Bulgarian Split Squat', '4x 8/8', 4, '8/8', POR_LADO, 'https://youtu.be/wBmQX_jrLFw'),
     ],
   },
 ];
 
-// Plano anterior da Déka (musculação de inferiores). O app mostra só
-// DEFAULT_WORKOUTS. Isto fica no arquivo para o histórico antigo ainda
-// achar o nome do exercício, e para a ficha não se perder.
-export const ARCHIVED_PROTOCOL_INFO = {
-  aluna: 'Isa',
-  inicio: '24/08/2026',
-  objetivo: 'Fortalecimento e preparação para corrida · Hipertrofia isolada de membros inferiores',
-  personal: 'Déka Lagranha',
-};
-
-export const ARCHIVED_WORKOUTS = [
+// Plano da Déka que já estava no app (com vídeos). Continua ativo, junto com a planilha DG.
+export const CLASSIC_WORKOUTS = [
   {
     id: 'A', name: 'Treino A', focus: 'Quadríceps + Glúteo', subfocus: '',
     warmup: "3' de ativação da musculatura de inferiores", finisher: '',
@@ -177,6 +168,8 @@ export const ARCHIVED_WORKOUTS = [
     ],
   },
 ];
+
+export const DEFAULT_WORKOUTS = [...CLASSIC_WORKOUTS, ...DG_WORKOUTS];
 
 export const MOTIVATIONAL_MESSAGES = [
   'Presença já é uma forma de cuidado.',

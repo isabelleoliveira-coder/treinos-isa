@@ -1,4 +1,4 @@
-import { ARCHIVED_WORKOUTS, CYCLE_WEEKS, PROTOCOL_INFO, TIPS, MOTIVATIONAL_MESSAGES } from '../data/workouts.js';
+import { CLASSIC_WORKOUTS, DG_WORKOUTS, CYCLE_WEEKS, PROTOCOL_INFO, TIPS, MOTIVATIONAL_MESSAGES } from '../data/workouts.js';
 import { AVATAR_URL } from '../data/avatar.js';
 import { loadWorkouts, saveWorkouts, loadSessions, saveSessions, loadTheme, saveTheme, loadActiveSession, saveActiveSession, clearActiveSession, loadArchivedWorkoutLists } from './storage.js';
 import { LAST_BACKUP_KEY, buildBackup, backupFilename, readLastBackup, validateBackup, restoreBackup, deliverBackup } from './backup.js';
@@ -157,7 +157,7 @@ function workoutFromAnywhere(workoutId) {
     const found = lists[i].find((w) => w && w.id === workoutId);
     if (found) return found;
   }
-  return ARCHIVED_WORKOUTS.find((w) => w.id === workoutId) || null;
+  return CLASSIC_WORKOUTS.find((w) => w.id === workoutId) || DG_WORKOUTS.find((w) => w.id === workoutId) || null;
 }
 
 function exerciseName(workoutId, exId) {
@@ -167,9 +167,12 @@ function exerciseName(workoutId, exId) {
 function suggestedWorkoutId() {
   const last = sessionsNewestFirst().find((s) => s.status !== 'skipped' && s.status !== 'loads');
   if (!last) return state.workouts[0].id;
-  const idx = state.workouts.findIndex((w) => w.id === last.workoutId);
+  const classic = new Set(['A', 'B', 'C']);
+  const sameGroup = state.workouts.filter((w) => classic.has(w.id) === classic.has(last.workoutId));
+  const group = sameGroup.length ? sameGroup : state.workouts;
+  const idx = group.findIndex((w) => w.id === last.workoutId);
   if (idx < 0) return state.workouts[0].id;
-  return state.workouts[(idx + 1) % state.workouts.length].id;
+  return group[(idx + 1) % group.length].id;
 }
 
 function blankRow() {
@@ -654,12 +657,12 @@ function renderHoje() {
     <div style="padding:26px 20px 4px">
       <div style="font-size:11px;letter-spacing:1.5px;color:var(--accent);font-weight:700;text-transform:uppercase">Olá, ${escapeHtml(PROTOCOL_INFO.aluna)}</div>
       <h1 class="font-head" style="font-size:26px;margin:4px 0 0">Pronta pra treinar?</h1>
-      <p style="color:var(--muted);font-size:13px;margin:8px 0 0">Escolhe o treino ou só anota as cargas.</p>
+      <p style="color:var(--muted);font-size:13px;margin:8px 0 0">Escolhe um treino A, B ou C, ou um da planilha DG.</p>
     </div>
 
     <div style="padding:16px 20px 0">
       ${renderResumeCard()}
-      ${state.workouts.map((w) => renderWorkoutLauncher(w, suggestedId)).join('')}
+      ${renderWorkoutGroups(suggestedId)}
       <button type="button" class="btn-ghost" data-action="open-loads" data-workout="${suggestedId}" style="border-color:var(--accent);color:var(--accent);margin-top:4px">Anotar cargas sem fazer o treino</button>
       ${renderCycleCard()}
     </div>
@@ -712,7 +715,7 @@ function renderResumeCard() {
 function renderCycleCard() {
   return `
     <div class="card" style="margin-top:14px">
-      <div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--accent);text-transform:uppercase">Progressão · 4 semanas</div>
+      <div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--accent);text-transform:uppercase">Planilha DG · 4 semanas</div>
       ${CYCLE_WEEKS.map((w) => `
         <div style="margin-top:10px">
           <div style="font-size:12.5px;font-weight:700">${escapeHtml(w.label)}</div>
@@ -720,6 +723,40 @@ function renderCycleCard() {
         </div>
       `).join('')}
     </div>
+  `;
+}
+
+function splitWorkoutGroups() {
+  const classicIds = new Set(['A', 'B', 'C']);
+  const dgIds = new Set(['1', '2', '3', '4']);
+  const classic = [];
+  const dg = [];
+  const other = [];
+  state.workouts.forEach((w) => {
+    if (classicIds.has(w.id)) classic.push(w);
+    else if (dgIds.has(w.id)) dg.push(w);
+    else other.push(w);
+  });
+  return { classic, dg, other };
+}
+
+function renderGroupHeading(title, subtitle) {
+  return `
+    <div style="margin:14px 0 8px">
+      <div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:var(--accent);text-transform:uppercase">${escapeHtml(title)}</div>
+      ${subtitle ? `<div style="color:var(--muted);font-size:12.5px;line-height:1.4;margin-top:3px">${escapeHtml(subtitle)}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderWorkoutGroups(suggestedId) {
+  const { classic, dg, other } = splitWorkoutGroups();
+  return `
+    ${renderGroupHeading('Treinos A, B e C', 'O plano da Déka, com os vídeos de antes.')}
+    ${classic.map((w) => renderWorkoutLauncher(w, suggestedId)).join('')}
+    ${other.length ? `${renderGroupHeading('Outros treinos', '')}${other.map((w) => renderWorkoutLauncher(w, suggestedId)).join('')}` : ''}
+    ${renderGroupHeading('Planilha DG', 'Treinos 1 a 4. Toque em Começar no que for fazer hoje.')}
+    ${dg.map((w) => renderWorkoutLauncher(w, suggestedId)).join('')}
   `;
 }
 
@@ -749,22 +786,32 @@ function renderExercicios() {
   return `
     <div style="padding:22px 20px">
       <h2 class="font-head" style="font-size:24px;margin:0 0 4px">Exercícios</h2>
-      <p style="color:var(--muted);font-size:13px;margin:0 0 18px">Consulte séries, adicione vídeos e observações.</p>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${state.workouts.map((w) => `
-          <button class="card" data-action="open-browse" data-workout="${w.id}" style="display:flex;align-items:center;gap:14px;width:100%;border:none;text-align:left">
-            <div class="font-head" style="width:44px;height:44px;border-radius:50%;background:var(--bg);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <span style="font-size:18px;color:var(--accent)">${escapeHtml(w.id)}</span>
-            </div>
-            <div style="flex:1">
-              <div style="font-weight:700;font-size:14.5px">${escapeHtml(w.focus)}</div>
-              <div style="color:var(--muted);font-size:12px;margin-top:2px">${w.exercises.length} exercícios</div>
-            </div>
-            <span style="color:var(--faint)">${icon('chevronRight', 18)}</span>
-          </button>
-        `).join('')}
-      </div>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 6px">A, B e C continuam aqui. A planilha DG está em seguida.</p>
+      ${renderExerciseGroups()}
     </div>
+  `;
+}
+
+function renderExerciseGroups() {
+  const { classic, dg, other } = splitWorkoutGroups();
+  const card = (w) => `
+    <button class="card" data-action="open-browse" data-workout="${w.id}" style="display:flex;align-items:center;gap:14px;width:100%;border:none;text-align:left">
+      <div class="font-head" style="width:44px;height:44px;border-radius:50%;background:var(--bg);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <span style="font-size:18px;color:var(--accent)">${escapeHtml(w.id)}</span>
+      </div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14.5px">${escapeHtml(w.focus)}</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:2px">${escapeHtml(w.name)} · ${w.exercises.length} exercícios</div>
+      </div>
+      <span style="color:var(--faint)">${icon('chevronRight', 18)}</span>
+    </button>
+  `;
+  return `
+    ${renderGroupHeading('Treinos A, B e C', '')}
+    <div style="display:flex;flex-direction:column;gap:10px">${classic.map(card).join('')}</div>
+    ${other.length ? `${renderGroupHeading('Outros treinos', '')}<div style="display:flex;flex-direction:column;gap:10px">${other.map(card).join('')}</div>` : ''}
+    ${renderGroupHeading('Planilha DG', '')}
+    <div style="display:flex;flex-direction:column;gap:10px">${dg.map(card).join('')}</div>
   `;
 }
 
@@ -993,7 +1040,7 @@ function renderPerfil() {
 
       ${renderBackupSection()}
 
-      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Progressão do ciclo</div>
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Planilha DG · 4 semanas</div>
       ${renderCycleCard()}
 
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:18px 0 10px">Lembretes da Déka</div>
